@@ -273,9 +273,10 @@ tests/
 - [x] 型ヒントの完全対応（Python 3.9+の新しい構文）
 - [x] ruffによるフォーマットとリント
 - [x] Makefileによるタスク自動化
+- [x] PyPIへの公開
 - [ ] エラーメッセージの改善
 - [ ] より多くのテストケース
-- [ ] CI/CDの完全な導入
+- [ ] CI/CDの完全な導入（GitHub Actions設定済み）
 
 ### 中期
 - [ ] 記録の差分表示（`regrest diff`）
@@ -356,6 +357,7 @@ MIT License
 ## 開発履歴
 
 ### 0.1.0 (2025-01-XX)
+- **PyPIへの公開** - `pip install regrest`でインストール可能に
 - 初回リリース
 - 基本的なデコレーター機能（`@regrest`）
 - JSONとPickleのハイブリッドストレージ

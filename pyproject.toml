@@ -43,6 +43,7 @@ Homepage = "https://github.com/eycjur/regrest"
 Repository = "https://github.com/eycjur/regrest"
 Documentation = "https://github.com/eycjur/regrest#readme"
 Issues = "https://github.com/eycjur/regrest/issues"
+PyPI = "https://pypi.org/project/regrest/"
 
 [project.scripts]
 regrest = "regrest.cli:main"

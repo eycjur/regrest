@@ -1,6 +1,13 @@
 # Regrest
 
-[English](README.md) | [日本語](README_ja.md)
+[English](https://github.com/eycjur/regrest/blob/main/README.md) | [日本語](https://github.com/eycjur/regrest/blob/main/README_ja.md)
+
+[![PyPI version](https://badge.fury.io/py/regrest.svg)](https://badge.fury.io/py/regrest)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Test](https://github.com/eycjur/regrest/actions/workflows/test.yml/badge.svg)](https://github.com/eycjur/regrest/actions/workflows/test.yml)
+[![Static Analysis](https://github.com/eycjur/regrest/actions/workflows/static_analysis.yml/badge.svg)](https://github.com/eycjur/regrest/actions/workflows/static_analysis.yml)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/eycjur/regrest)
 
 **Regrest** is a simple and powerful regression testing tool for Python. It automatically records function outputs on the first run and validates them on subsequent runs.
 
@@ -19,8 +26,20 @@
 
 ## Installation
 
+### From PyPI (recommended)
+
 ```bash
-# Using uv (recommended)
+pip install regrest
+```
+
+### From source
+
+```bash
+# Clone the repository
+git clone https://github.com/eycjur/regrest.git
+cd regrest
+
+# Using uv (recommended for development)
 uv sync --all-extras
 
 # Or using pip
@@ -62,15 +81,21 @@ make example
 
 ## Running Examples
 
+After installing regrest, you can try the examples:
+
 ```bash
+# Clone the repository to get example files
+git clone https://github.com/eycjur/regrest.git
+cd regrest
+
 # Basic usage example
-python tests/example.py
+python example.py
 
 # Custom class test
-python tests/test_custom_class.py
+python -m pytest tests/test_custom_class.py -v
 
 # Auto .gitignore test
-python tests/test_gitignore.py
+python -m pytest tests/test_gitignore.py -v
 ```
 
 ## Quick Start
@@ -464,6 +489,7 @@ MIT License
 ## Changelog
 
 ### 0.1.0 (Initial Release)
+- **Published to PyPI** - Install with `pip install regrest`
 - Core decorator functionality (`@regrest`)
 - Hybrid JSON/Pickle storage system
 - Smart comparison with floating-point tolerance

@@ -1,6 +1,13 @@
 # Regrest
 
-[English](README.md) | [日本語](README_ja.md)
+[English](https://github.com/eycjur/regrest/blob/main/README.md) | [日本語](https://github.com/eycjur/regrest/blob/main/README_ja.md)
+
+[![PyPI version](https://badge.fury.io/py/regrest.svg)](https://badge.fury.io/py/regrest)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Test](https://github.com/eycjur/regrest/actions/workflows/test.yml/badge.svg)](https://github.com/eycjur/regrest/actions/workflows/test.yml)
+[![Static Analysis](https://github.com/eycjur/regrest/actions/workflows/static_analysis.yml/badge.svg)](https://github.com/eycjur/regrest/actions/workflows/static_analysis.yml)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/eycjur/regrest)
 
 **Regrest** は、Pythonのためのシンプルで強力な回帰テストツールです。初回実行時に関数の出力を自動的に記録し、その後の実行で検証します。
 
@@ -19,8 +26,20 @@
 
 ## インストール
 
+### PyPIから（推奨）
+
 ```bash
-# uvを使用（推奨）
+pip install regrest
+```
+
+### ソースから
+
+```bash
+# リポジトリをクローン
+git clone https://github.com/eycjur/regrest.git
+cd regrest
+
+# uvを使用（開発時推奨）
 uv sync --all-extras
 
 # またはpipを使用
@@ -62,15 +81,21 @@ make example
 
 ## サンプルの実行
 
+regrestをインストール後、サンプルを試すことができます：
+
 ```bash
+# サンプルファイルを取得するためにリポジトリをクローン
+git clone https://github.com/eycjur/regrest.git
+cd regrest
+
 # 基本的な使用例
-python tests/example.py
+python example.py
 
 # カスタムクラスのテスト
-python tests/test_custom_class.py
+python -m pytest tests/test_custom_class.py -v
 
 # .gitignore自動作成のテスト
-python tests/test_gitignore.py
+python -m pytest tests/test_gitignore.py -v
 ```
 
 ## クイックスタート
@@ -464,6 +489,7 @@ MIT License
 ## 変更履歴
 
 ### 0.1.0（初回リリース）
+- **PyPIへの公開** - `pip install regrest`でインストール可能
 - コアデコレーター機能（`@regrest`）
 - JSON/Pickleハイブリッドストレージシステム
 - 浮動小数点許容誤差付きスマート比較
