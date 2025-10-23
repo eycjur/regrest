@@ -1,0 +1,50 @@
+name: Test
+
+permissions:
+  contents: read
+  pull-requests: write
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: Kesin11/actions-timeline@v2
+
+      - uses: actions/checkout@v4
+
+      - name: set up python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: install dependencies
+        run: uv sync --frozen --all-extras
+
+      - name: run pytest
+        run: uv run python -m pytest tests/ -v --cov=regrest --cov-report=term-missing --cov-report=xml
+
+      - name: upload coverage to codecov
+        uses: codecov/codecov-action@v4
+        if: matrix.python-version == '3.13'
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false

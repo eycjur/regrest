@@ -1,0 +1,51 @@
+name: Static Analysis
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static_analysis:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: Kesin11/actions-timeline@v2
+
+      - uses: actions/checkout@v4
+
+      - name: set up python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: install dependencies
+        run: uv sync --frozen --all-extras
+
+      - name: run ruff format check
+        if: always()
+        run: uv run python -m ruff format --check --diff .
+
+      - name: run ruff lint
+        if: always()
+        run: uv run python -m ruff check --output-format=github .
+
+      - name: run mypy
+        if: always()
+        run: uv run python -m mypy .
