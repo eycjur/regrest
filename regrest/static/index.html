@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Regrest - Test Records Viewer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .tree-item {
+            position: relative;
+            display: block;
+        }
+        .tree-children {
+            margin-left: 4ch;
+            display: block;
+        }
+        .tree-children-root {
+            display: block;
+        }
+        .tree-children > .tree-item::before {
+            content: '';
+            position: absolute;
+            left: -2ch;
+            top: 0.5em;
+            width: 2ch;
+            height: 1px;
+            background: #d1d5db;
+        }
+        .tree-children > .tree-item::after {
+            content: '';
+            position: absolute;
+            left: -2ch;
+            top: 0;
+            width: 1px;
+            height: 100%;
+            background: #d1d5db;
+        }
+        .tree-children > .tree-item:last-child::after {
+            height: 0.5em;
+        }
+        .tree-children-root > .tree-item::before,
+        .tree-children-root > .tree-item::after {
+            display: none;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 h-screen flex flex-col">
+    <!-- Header -->
+    <header class="bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg">
+        <div class="px-6 py-4 flex justify-between items-center">
+            <a href="/" class="hover:opacity-80 transition cursor-pointer">
+                <h1 class="text-2xl font-bold">🧪 Regrest</h1>
+                <p class="text-sm text-purple-100">Test Records Visualization Dashboard</p>
+            </a>
+            <button
+                onclick="deleteAllRecords()"
+                class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium transition shadow-md">
+                🗑️ Delete All
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Layout -->
+    <div class="flex-1 flex overflow-hidden">
+        <!-- Sidebar -->
+        <aside class="w-72 bg-white border-r border-gray-200 overflow-y-auto">
+            <!-- Errors Section -->
+            <div id="errorsSidebar"></div>
+
+            <!-- Modules Section -->
+            <div class="px-4 py-3 bg-gray-50 border-b border-gray-200 font-semibold text-gray-700">
+                📦 Modules
+            </div>
+            <ul id="moduleList" class="divide-y divide-gray-100"></ul>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 overflow-y-auto bg-gray-50">
+            <!-- Search Bar -->
+            <div class="bg-white border-b border-gray-200 px-6 py-3">
+                <input
+                    type="text"
+                    id="searchBox"
+                    placeholder="🔍 Search by module or function name..."
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none">
+            </div>
+
+            <!-- Records Container -->
+            <div class="p-6">
+                <div id="loading" class="text-center py-12 text-gray-400">
+                    Loading records...
+                </div>
+                <div id="errorsList"></div>
+                <div id="recordsList"></div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div id="deleteModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 class="text-lg font-bold text-gray-900 mb-2">Confirm Delete</h3>
+            <p class="text-gray-600 mb-6" id="deleteMessage"></p>
+            <div class="flex gap-3 justify-end">
+                <button
+                    onclick="closeDeleteModal()"
+                    class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition">
+                    Cancel
+                </button>
+                <button
+                    onclick="confirmDelete()"
+                    class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition">
+                    Delete
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let allRecords = [];
+        let allErrors = [];
+        let deleteCallback = null;
+
+        async function loadRecords() {
+            try {
+                const response = await fetch('/api/records');
+                const data = await response.json();
+
+                // Handle both array and object responses
+                if (Array.isArray(data)) {
+                    allRecords = data;
+                    allErrors = [];
+                } else {
+                    allRecords = data.records || [];
+                    allErrors = data.error_records || [];
+                    if (data.skipped > 0) {
+                        console.warn(`Skipped ${data.skipped} record(s) due to loading errors`);
+                    }
+                }
+
+                document.getElementById('loading').style.display = 'none';
+                displayErrors(allErrors);
+                updateSidebar();
+                displayRecords(allRecords);
+
+                // Scroll to hash if present
+                scrollToHash();
+            } catch (error) {
+                const msg = 'Error loading records: ' + error.message;
+                document.getElementById('loading').innerHTML =
+                    '<div class="bg-red-50 border border-red-200 rounded-lg p-4 text-red-600">' + msg + '</div>';
+            }
+        }
+
+        function updateSidebar() {
+            const moduleList = document.getElementById('moduleList');
+
+            // Group records by module and function
+            const grouped = {};
+            allRecords.forEach(record => {
+                if (!grouped[record.module]) {
+                    grouped[record.module] = {};
+                }
+                if (!grouped[record.module][record.function]) {
+                    grouped[record.module][record.function] = 0;
+                }
+                grouped[record.module][record.function]++;
+            });
+
+            const sortedModules = Object.keys(grouped).sort();
+
+            moduleList.innerHTML = '';
+            sortedModules.forEach(module => {
+                // Create module item
+                const moduleLi = document.createElement('li');
+                moduleLi.className = 'border-b border-gray-100';
+
+                // Module header
+                const moduleHeader = document.createElement('div');
+                moduleHeader.className = 'px-4 py-3 cursor-pointer hover:bg-gray-50 transition flex justify-between items-center';
+                moduleHeader.onclick = (e) => {
+                    e.stopPropagation();
+                    toggleSidebarModule(moduleLi, module);
+                };
+
+                const moduleName = document.createElement('span');
+                moduleName.className = 'text-sm font-medium text-gray-700 truncate flex items-center gap-2';
+
+                const arrow = document.createElement('span');
+                arrow.className = 'text-gray-400 sidebar-arrow';
+                arrow.textContent = '▶';
+
+                const nameText = document.createElement('span');
+                nameText.textContent = module;
+
+                moduleName.appendChild(arrow);
+                moduleName.appendChild(nameText);
+
+                const moduleCount = document.createElement('span');
+                moduleCount.className = 'ml-2 px-2 py-1 bg-gray-100 text-gray-600 rounded-full text-xs';
+                const totalCount = Object.values(grouped[module]).reduce((a, b) => a + b, 0);
+                moduleCount.textContent = totalCount;
+
+                moduleHeader.appendChild(moduleName);
+                moduleHeader.appendChild(moduleCount);
+
+                // Function list (initially hidden)
+                const functionList = document.createElement('ul');
+                functionList.className = 'function-list hidden bg-gray-50';
+                functionList.style.display = 'none';
+
+                const sortedFunctions = Object.keys(grouped[module]).sort();
+                sortedFunctions.forEach(func => {
+                    const funcLi = document.createElement('li');
+                    funcLi.className = 'pl-8 pr-4 py-2 cursor-pointer hover:bg-gray-100 transition flex justify-between items-center text-sm';
+                    funcLi.onclick = (e) => {
+                        e.stopPropagation();
+                        scrollToFunction(module, func);
+                    };
+
+                    const funcName = document.createElement('span');
+                    funcName.className = 'text-gray-600 truncate';
+                    funcName.textContent = func + '()';
+
+                    const funcCount = document.createElement('span');
+                    funcCount.className = 'ml-2 px-2 py-1 bg-gray-200 text-gray-600 rounded-full text-xs';
+                    funcCount.textContent = grouped[module][func];
+
+                    funcLi.appendChild(funcName);
+                    funcLi.appendChild(funcCount);
+                    functionList.appendChild(funcLi);
+                });
+
+                moduleLi.appendChild(moduleHeader);
+                moduleLi.appendChild(functionList);
+                moduleList.appendChild(moduleLi);
+            });
+        }
+
+        function toggleSidebarModule(moduleLi, module) {
+            const functionList = moduleLi.querySelector('.function-list');
+            const arrow = moduleLi.querySelector('.sidebar-arrow');
+
+            if (functionList.style.display === 'none') {
+                functionList.style.display = 'block';
+                arrow.textContent = '▼';
+            } else {
+                functionList.style.display = 'none';
+                arrow.textContent = '▶';
+            }
+        }
+
+        function scrollToModule(module) {
+            const element = document.getElementById(`module-${module}`);
+            if (element) {
+                element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                // Update URL hash
+                window.location.hash = `module-${module}`;
+            }
+        }
+
+        function scrollToFunction(module, func) {
+            const element = document.getElementById(`function-${module}-${func}`);
+            if (element) {
+                element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                // Update URL hash
+                window.location.hash = `function-${module}-${func}`;
+            }
+        }
+
+        function scrollToHash() {
+            const hash = window.location.hash.substring(1); // Remove '#'
+            if (hash) {
+                const element = document.getElementById(hash);
+                if (element) {
+                    // Wait for DOM to be ready
+                    setTimeout(() => {
+                        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+                        // Expand parent elements if they're collapsed
+                        let parent = element;
+                        while (parent) {
+                            if (parent.classList && parent.classList.contains('module-content')) {
+                                parent.style.display = 'block';
+                                const icon = parent.previousElementSibling?.querySelector('span:last-child');
+                                if (icon) icon.textContent = '▼';
+                            }
+                            if (parent.classList && parent.classList.contains('function-content')) {
+                                parent.style.display = 'block';
+                                const icon = parent.previousElementSibling?.querySelector('span:last-child');
+                                if (icon) icon.textContent = '▼';
+                            }
+                            parent = parent.parentElement;
+                        }
+                    }, 100);
+                }
+            }
+        }
+
+        function displayErrors(errors) {
+            const container = document.getElementById('errorsList');
+            const sidebar = document.getElementById('errorsSidebar');
+
+            if (!errors || errors.length === 0) {
+                container.innerHTML = '';
+                sidebar.innerHTML = '';
+                return;
+            }
+
+            // Update sidebar
+            sidebar.innerHTML = `
+                <div class="border-b border-gray-200">
+                    <div class="px-4 py-3 bg-red-50 border-b border-red-200 font-semibold text-red-700 flex items-center justify-between">
+                        <span>⚠️ Errors (${errors.length})</span>
+                    </div>
+                    <ul class="divide-y divide-gray-100">
+                        ${errors.map(error => `
+                            <li class="px-4 py-3 hover:bg-red-50 cursor-pointer transition"
+                                onclick="scrollToError('${escapeHtml(error.record_id)}')">
+                                <div class="text-sm font-medium text-gray-900 truncate">
+                                    ${escapeHtml(error.module)}.${escapeHtml(error.function)}()
+                                </div>
+                                <div class="text-xs text-red-600 mt-1 truncate">
+                                    ${escapeHtml(error.error_type)}
+                                </div>
+                            </li>
+                        `).join('')}
+                    </ul>
+                </div>
+            `;
+
+            // Update main content
+            container.innerHTML = `
+                <div class="mb-6 bg-red-50 border-2 border-red-200 rounded-lg p-4">
+                    <div class="flex items-start mb-3">
+                        <span class="text-2xl mr-3">⚠️</span>
+                        <div>
+                            <h3 class="text-lg font-bold text-red-700 mb-1">
+                                ${errors.length} Record${errors.length > 1 ? 's' : ''} Failed to Load
+                            </h3>
+                            <p class="text-sm text-red-600">
+                                These records could not be loaded due to missing classes or other errors.
+                            </p>
+                        </div>
+                    </div>
+                    ${errors.map(error => `
+                        <div id="error-${escapeHtml(error.record_id)}" class="mt-3 bg-white border border-red-200 rounded p-3">
+                            <div class="flex justify-between items-start mb-2">
+                                <div>
+                                    <div class="font-mono text-sm text-gray-700">
+                                        <span class="font-semibold">${escapeHtml(error.module)}</span>.<span class="text-blue-600">${escapeHtml(error.function)}</span>()
+                                    </div>
+                                    <div class="text-xs text-gray-500 mt-1">
+                                        ID: ${escapeHtml(error.record_id)}
+                                    </div>
+                                </div>
+                                <button
+                                    onclick="deleteRecord('${escapeHtml(error.record_id)}')"
+                                    class="px-3 py-1 bg-red-500 hover:bg-red-600 text-white text-sm rounded transition">
+                                    Delete
+                                </button>
+                            </div>
+                            <div class="mt-2 text-sm">
+                                <div class="text-red-700 font-semibold">${escapeHtml(error.error_message)}</div>
+                                <div class="text-gray-600 mt-1">${escapeHtml(error.details)}</div>
+                                ${error.suggested_fixes && error.suggested_fixes.length > 0 ? `
+                                    <div class="mt-2">
+                                        <div class="text-xs font-semibold text-gray-600 mb-1">Suggested fixes:</div>
+                                        <ul class="text-xs text-gray-600 list-disc list-inside">
+                                            ${error.suggested_fixes.map(fix => `<li>${escapeHtml(fix)}</li>`).join('')}
+                                        </ul>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function scrollToError(recordId) {
+            const element = document.getElementById('error-' + recordId);
+            if (element) {
+                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                // Highlight briefly
+                element.classList.add('ring-2', 'ring-red-400');
+                setTimeout(() => {
+                    element.classList.remove('ring-2', 'ring-red-400');
+                }, 2000);
+            }
+        }
+
+        function displayRecords(records) {
+            const container = document.getElementById('recordsList');
+
+            // Reset value ID counter for consistent IDs
+            valueIdCounter = 0;
+
+            if (records.length === 0) {
+                container.innerHTML = '<div class="text-center py-12 text-gray-400">No records found</div>';
+                return;
+            }
+
+            // Group by module and function
+            const grouped = {};
+            records.forEach(record => {
+                if (!grouped[record.module]) {
+                    grouped[record.module] = {};
+                }
+                if (!grouped[record.module][record.function]) {
+                    grouped[record.module][record.function] = [];
+                }
+                grouped[record.module][record.function].push(record);
+            });
+
+            // Generate HTML
+            container.innerHTML = Object.keys(grouped).sort().map(module => `
+                <div id="module-${escapeHtml(module)}" class="mb-4 bg-white rounded-lg shadow-sm overflow-hidden">
+                    <div class="bg-gradient-to-r from-purple-50 to-indigo-50 px-4 py-3 cursor-pointer hover:from-purple-100 hover:to-indigo-100 transition flex justify-between items-center"
+                         onclick="toggleGroup(this)">
+                        <span class="font-semibold text-gray-700">📦 ${escapeHtml(module)}</span>
+                        <span class="text-gray-400">▼</span>
+                    </div>
+                    <div class="module-content bg-gray-100 p-3">
+                        ${Object.keys(grouped[module]).sort().map(func => `
+                            <div id="function-${escapeHtml(module)}-${escapeHtml(func)}" class="mb-3 bg-white rounded-lg shadow-sm overflow-hidden">
+                                <div class="bg-blue-50 px-4 py-3 cursor-pointer hover:bg-blue-100 transition flex justify-between items-center"
+                                     onclick="toggleGroup(this)">
+                                    <span class="font-medium text-gray-600">
+                                        ⚡ ${escapeHtml(func)}()
+                                        <span class="ml-2 text-gray-400 text-sm">(${grouped[module][func].length})</span>
+                                    </span>
+                                    <span class="text-gray-400">▼</span>
+                                </div>
+                                <div class="function-content bg-white">
+                                    ${grouped[module][func].map(record => `
+                                        <div class="border-t border-gray-200">
+                                            <div class="bg-white px-4 py-2 cursor-pointer hover:bg-gray-50 transition flex justify-between items-center"
+                                                 onclick="toggleGroup(this)">
+                                                <code class="text-xs text-gray-600 font-mono">
+                                                    ${escapeHtml(record.record_id)}
+                                                </code>
+                                                <div class="flex items-center gap-3">
+                                                    <span class="text-xs text-gray-400">
+                                                        📅 ${formatTimestamp(record.timestamp)}
+                                                    </span>
+                                                    <button
+                                                        onclick="event.stopPropagation(); deleteRecord('${escapeHtml(record.record_id)}')"
+                                                        class="text-red-500 hover:text-red-700 text-sm">
+                                                        🗑️
+                                                    </button>
+                                                    <span class="text-gray-400">▼</span>
+                                                </div>
+                                            </div>
+                                            <div class="record-content bg-white px-6 py-4">
+                                                ${record.args && record.args.length > 0 ? `
+                                                    <div class="mb-3">
+                                                        <div class="text-xs font-semibold text-gray-500 uppercase mb-1">Arguments</div>
+                                                        <div class="bg-gray-50 rounded border border-gray-200 p-3">
+                                                            ${renderTopLevelArgs(record.args)}
+                                                        </div>
+                                                    </div>
+                                                ` : ''}
+
+                                                ${record.kwargs && Object.keys(record.kwargs).length > 0 ? `
+                                                    <div class="mb-3">
+                                                        <div class="text-xs font-semibold text-gray-500 uppercase mb-1">Keyword Arguments</div>
+                                                        <div class="bg-gray-50 rounded border border-gray-200 p-3">
+                                                            ${renderTopLevelKwargs(record.kwargs)}
+                                                        </div>
+                                                    </div>
+                                                ` : ''}
+
+                                                <div>
+                                                    <div class="text-xs font-semibold text-gray-500 uppercase mb-1">Result</div>
+                                                    <div class="bg-gray-50 rounded border border-gray-200 p-3">
+                                                        ${renderValue(record.result)}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function toggleGroup(header) {
+            const content = header.nextElementSibling;
+            const icon = header.querySelector('span:last-child');
+
+            if (content.style.display === 'none') {
+                content.style.display = 'block';
+                icon.textContent = '▼';
+            } else {
+                content.style.display = 'none';
+                icon.textContent = '▶';
+            }
+        }
+
+        let valueIdCounter = 0;
+
+        function renderTopLevelArgs(args) {
+            if (!args || args.length === 0) {
+                return '<div class="text-gray-400 text-sm">(no arguments)</div>';
+            }
+
+            return `<div class="tree-children-root">${args.map((item, idx) => `
+                <div class="tree-item mb-1">
+                    <span class="text-gray-400 text-xs">[${idx}]</span>
+                    ${renderValue(item, 0)}
+                </div>
+            `).join('')}</div>`;
+        }
+
+        function renderTopLevelKwargs(kwargs) {
+            if (!kwargs || Object.keys(kwargs).length === 0) {
+                return '<div class="text-gray-400 text-sm">(no keyword arguments)</div>';
+            }
+
+            return `<div class="tree-children-root">${Object.keys(kwargs).map(key => `
+                <div class="tree-item mb-1">
+                    <span class="text-blue-600 font-mono text-sm">${escapeHtml(key)}:</span>
+                    ${renderValue(kwargs[key], 0)}
+                </div>
+            `).join('')}</div>`;
+        }
+
+        function renderValue(value, indent = 0) {
+            if (value === null) {
+                return '<span class="text-purple-600">null</span>';
+            }
+
+            if (typeof value === 'boolean') {
+                return `<span class="text-blue-600">${value}</span>`;
+            }
+
+            if (typeof value === 'number') {
+                return `<span class="text-green-600">${value}</span>`;
+            }
+
+            if (typeof value === 'string') {
+                return `<span class="text-orange-600">"${escapeHtml(value)}"</span>`;
+            }
+
+            if (Array.isArray(value)) {
+                if (value.length === 0) {
+                    return '<span class="text-gray-400">[]</span>';
+                }
+
+                const id = `value-${valueIdCounter++}`;
+
+                const items = value.map((item, idx) => `
+                    <div class="tree-item">
+                        <span class="text-gray-400 text-xs">[${idx}]</span>
+                        ${renderValue(item, indent + 1)}
+                    </div>
+                `).join('');
+
+                return `
+                    <span class="cursor-pointer hover:bg-gray-100 rounded px-1" onclick="toggleValue('${id}', this)">
+                        <span class="text-gray-400 text-xs arrow-icon">▼</span>
+                    </span>
+                    <span class="text-gray-600 font-mono">[</span>
+                    <div id="${id}" class="tree-children my-1" style="display: block">
+                        ${items}
+                    </div>
+                    <span class="text-gray-600 font-mono">]</span>
+                `;
+            }
+
+            if (typeof value === 'object') {
+                // Check if it's a custom class instance
+                const isClass = value.__class__ && value.__module__;
+                const className = isClass ? value.__class__ : null;
+
+                // Filter out metadata keys
+                const keys = Object.keys(value).filter(k => !k.startsWith('__'));
+
+                if (keys.length === 0) {
+                    if (isClass) {
+                        return `<span class="text-purple-600">${escapeHtml(className)}()</span>`;
+                    }
+                    return '<span class="text-gray-400">{}</span>';
+                }
+
+                const id = `value-${valueIdCounter++}`;
+
+                const items = keys.map(key => {
+                    const val = value[key];
+                    const renderedValue = renderValue(val, indent + 1);
+
+                    // Check if rendered value starts with toggle icon
+                    if (renderedValue.trim().startsWith('<span class="cursor-pointer')) {
+                        // Extract toggle span (first complete <span>...</span>)
+                        const toggleEnd = renderedValue.indexOf('</span>') + 7;
+                        const toggle = renderedValue.substring(0, toggleEnd);
+                        const rest = renderedValue.substring(toggleEnd);
+
+                        return `
+                            <div class="tree-item">
+                                ${toggle}
+                                <span class="text-blue-600 font-mono text-sm">${escapeHtml(key)}:</span>
+                                ${rest}
+                            </div>
+                        `;
+                    } else {
+                        return `
+                            <div class="tree-item">
+                                <span class="text-blue-600 font-mono text-sm">${escapeHtml(key)}:</span>
+                                ${renderedValue}
+                            </div>
+                        `;
+                    }
+                }).join('');
+
+                const openBracket = isClass ? '(' : '{';
+                const closeBracket = isClass ? ')' : '}';
+                const classLabel = isClass ? `<span class="text-purple-600">${escapeHtml(className)}</span>` : '';
+
+                return `
+                    <span class="cursor-pointer hover:bg-gray-100 rounded px-1" onclick="toggleValue('${id}', this)">
+                        <span class="text-gray-400 text-xs arrow-icon">▼</span>
+                    </span>
+                    ${classLabel}<span class="text-gray-600 font-mono">${openBracket}</span>
+                    <div id="${id}" class="tree-children my-1" style="display: block">
+                        ${items}
+                    </div>
+                    <span class="text-gray-600 font-mono">${closeBracket}</span>
+                `;
+            }
+
+            return escapeHtml(String(value));
+        }
+
+        function toggleValue(id, element) {
+            const content = document.getElementById(id);
+            const arrow = element.querySelector('.arrow-icon');
+
+            if (content.style.display === 'none') {
+                content.style.display = 'block';
+                arrow.textContent = '▼';
+            } else {
+                content.style.display = 'none';
+                arrow.textContent = '▶';
+            }
+        }
+
+        function formatTimestamp(timestamp) {
+            const date = new Date(timestamp);
+            return date.toLocaleString();
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function filterRecords(query) {
+            if (!query.trim()) {
+                displayRecords(allRecords);
+                return;
+            }
+
+            const lowerQuery = query.toLowerCase();
+            const filtered = allRecords.filter(record =>
+                record.module.toLowerCase().includes(lowerQuery) ||
+                record.function.toLowerCase().includes(lowerQuery)
+            );
+
+            displayRecords(filtered);
+        }
+
+        function deleteRecord(recordId) {
+            deleteCallback = async () => {
+                try {
+                    const response = await fetch(`/api/records/${recordId}`, {
+                        method: 'DELETE'
+                    });
+
+                    if (response.ok) {
+                        await loadRecords();
+                        closeDeleteModal();
+                    } else {
+                        alert('Failed to delete record');
+                    }
+                } catch (error) {
+                    alert('Error: ' + error.message);
+                }
+            };
+
+            showDeleteModal(`Are you sure you want to delete record ${recordId}?`);
+        }
+
+        function deleteAllRecords() {
+            deleteCallback = async () => {
+                try {
+                    const response = await fetch('/api/records', {
+                        method: 'DELETE'
+                    });
+
+                    if (response.ok) {
+                        await loadRecords();
+                        closeDeleteModal();
+                    } else {
+                        alert('Failed to delete all records');
+                    }
+                } catch (error) {
+                    alert('Error: ' + error.message);
+                }
+            };
+
+            showDeleteModal('Are you sure you want to delete ALL records? This action cannot be undone.');
+        }
+
+        function showDeleteModal(message) {
+            document.getElementById('deleteMessage').textContent = message;
+            document.getElementById('deleteModal').classList.remove('hidden');
+        }
+
+        function closeDeleteModal() {
+            document.getElementById('deleteModal').classList.add('hidden');
+            deleteCallback = null;
+        }
+
+        function confirmDelete() {
+            if (deleteCallback) {
+                deleteCallback();
+            }
+        }
+
+        // Event listeners
+        document.getElementById('searchBox').addEventListener('input', (e) => {
+            filterRecords(e.target.value);
+        });
+
+        // Handle hash changes
+        window.addEventListener('hashchange', scrollToHash);
+
+        // Load data on page load
+        loadRecords();
+    </script>
+</body>
+</html>

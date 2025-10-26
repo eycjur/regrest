@@ -1,13 +1,96 @@
 """Storage layer for test records."""
 
 import base64
+import fnmatch
 import hashlib
+import importlib
+import io
 import json
+import logging
 import pickle
+import sys
 from datetime import datetime
 from typing import Any, Optional
 
 from .config import get_config
+
+
+class ModuleRemappingUnpickler(pickle.Unpickler):
+    """Custom unpickler that remaps __main__ to actual module names."""
+
+    def __init__(self, file: Any, module_name: str) -> None:
+        """Initialize unpickler.
+
+        Args:
+            file: File object to unpickle from
+            module_name: The actual module name to remap __main__ to
+        """
+        super().__init__(file)
+        self.module_name = module_name
+
+    def find_class(self, module: str, name: str) -> type[Any]:
+        """Find class, remapping __main__ to actual module name.
+
+        Args:
+            module: Module name
+            name: Class name
+
+        Returns:
+            The class object
+
+        Raises:
+            AttributeError: If class is not found in module
+            ImportError: If module cannot be imported
+        """
+        # Remap __main__ to the actual module name
+        if module == "__main__":
+            module = self.module_name
+
+        # Try to get from sys.modules first (for already loaded modules)
+        if module in sys.modules:
+            try:
+                return getattr(sys.modules[module], name)
+            except AttributeError:
+                # Class not found in loaded module
+                raise AttributeError(
+                    f"\n\n"
+                    f"❌ Class '{name}' not found in module '{module}'.\n\n"
+                    f"This error occurs when:\n"
+                    f"  • The class '{name}' has been deleted or renamed\n"
+                    f"  • The class definition has been moved to another module\n\n"
+                    f"To fix this:\n"
+                    f"  1. Restore the '{name}' class in {module}.py, OR\n"
+                    f"  2. Delete old records: regrest delete --all\n"
+                    f"  3. Update specific records:\n"
+                    f"     REGREST_UPDATE_MODE=1 python {module}.py\n"
+                ) from None
+
+        # Try to import the module and get the class
+        try:
+            mod = importlib.import_module(module)
+        except ImportError:
+            raise ImportError(
+                f"\n\n"
+                f"❌ Module '{module}' not found.\n\n"
+                f"To fix this:\n"
+                f"  • Delete old records: regrest delete --all\n"
+            ) from None
+
+        try:
+            return getattr(mod, name)
+        except AttributeError:
+            raise AttributeError(
+                f"\n\n"
+                f"❌ Class '{name}' not found in module '{module}'.\n\n"
+                f"This error occurs when:\n"
+                f"  • The class '{name}' has been deleted or renamed\n"
+                f"  • The class definition has been moved to another module\n\n"
+                f"To fix this:\n"
+                f"  1. Restore the '{name}' class in {module}.py, OR\n"
+                f"  2. Delete old records: regrest delete --all\n"
+                f"  3. Update specific records:\n"
+                f"     REGREST_UPDATE_MODE=1 python {module}.py\n"
+            ) from None
 
 
 class TestRecord:
@@ -75,11 +158,13 @@ class TestRecord:
             encoded = base64.b64encode(pickled).decode("ascii")
             return {"type": "pickle", "data": encoded}
 
-    def _try_decode(self, encoded: dict[str, Any]) -> Any:
+    @staticmethod
+    def _try_decode(encoded: dict[str, Any], module_name: str = "") -> Any:
         """Decode value from encoded format.
 
         Args:
             encoded: Encoded value dict
+            module_name: Module name for remapping __main__ in pickle
 
         Returns:
             Decoded value
@@ -87,7 +172,9 @@ class TestRecord:
         if isinstance(encoded, dict) and "type" in encoded:
             if encoded["type"] == "pickle":
                 decoded = base64.b64decode(encoded["data"])
-                return pickle.loads(decoded)
+                # Use custom unpickler to remap __main__ to actual module
+                unpickler = ModuleRemappingUnpickler(io.BytesIO(decoded), module_name)
+                return unpickler.load()
             else:  # json
                 return encoded["data"]
         # Legacy format (plain value)
@@ -108,13 +195,13 @@ class TestRecord:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "TestRecord":
         """Create record from dictionary."""
-        # Create a temporary instance to use _try_decode method
-        temp = cls.__new__(cls)
+        # Get module name for __main__ remapping
+        module_name = data.get("module", "")
 
         # Decode values
-        args = temp._try_decode(data["args"])
-        kwargs = temp._try_decode(data["kwargs"])
-        result = temp._try_decode(data["result"])
+        args = cls._try_decode(data["args"], module_name)
+        kwargs = cls._try_decode(data["kwargs"], module_name)
+        result = cls._try_decode(data["result"], module_name)
 
         # Create actual instance with decoded values
         return cls(
@@ -200,8 +287,9 @@ class Storage:
                 with open(filepath, encoding="utf-8") as f:
                     data = json.load(f)
                     records.append(TestRecord.from_dict(data))
-            except (json.JSONDecodeError, KeyError):
-                # Skip invalid files
+            except Exception as e:
+                # Skip invalid files or files with unpickleable data
+                logging.warning(f"Skipping record {filepath.name}: {str(e)}")
                 continue
         return records
 
@@ -252,8 +340,6 @@ class Storage:
         Returns:
             True if matches, False otherwise
         """
-        import fnmatch
-
         return fnmatch.fnmatch(filename, pattern)
 
     def clear_all(self) -> int:

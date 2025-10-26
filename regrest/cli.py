@@ -174,6 +174,35 @@ def delete(
         raise typer.Exit(code=1)
 
 
+@app.command()
+def serve(
+    ctx: typer.Context,
+    host: Annotated[str, typer.Option(help="Host to bind to")] = "localhost",
+    port: Annotated[int, typer.Option(help="Port to bind to")] = 8000,
+    reload: Annotated[
+        bool, typer.Option("--reload", help="Enable auto-reload on file changes")
+    ] = False,
+) -> None:
+    """Start a web server to visualize test records.
+
+    Examples:
+        regrest serve                    # Start server on localhost:8000
+        regrest serve --port 8080        # Start server on port 8080
+        regrest serve --host 0.0.0.0     # Allow external connections
+        regrest serve --reload           # Enable hot reload for development
+
+    Note:
+        If Flask is installed (pip install regrest[server]), a Flask-based
+        server will be used. Otherwise, falls back to the standard library
+        HTTP server.
+    """
+    storage_dir = ctx.obj["storage_dir"]
+
+    from .server import run_server
+
+    run_server(host=host, port=port, storage_dir=storage_dir, reload=reload)
+
+
 def _setup_config(storage_dir: str) -> None:
     """Set up configuration.
 

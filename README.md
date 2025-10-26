@@ -15,8 +15,9 @@
 
 - 🎯 **Simple decorator-based API** - Just add `@regrest` to your functions
 - 📝 **Automatic recording** - First run records outputs, subsequent runs validate
-- 🔍 **Smart comparison** - Handles floats, dicts, lists, nested structures
-- 🛠 **CLI tools** - List, view, and delete test records
+- 🔍 **Smart comparison** - Handles floats, dicts, lists, nested structures, and custom classes
+- 🛠 **CLI tools** - List, view, delete, and visualize test records
+- 📊 **Web visualization** - Beautiful dashboard with JSONesque display, hierarchical navigation, and hot reload
 - ⚙️ **Configurable** - Custom tolerance, storage location, and more
 - 🔧 **Auto .gitignore** - Automatically creates `.regrest/.gitignore` to exclude test records on first run
 
@@ -26,76 +27,11 @@
 
 ## Installation
 
-### From PyPI (recommended)
-
 ```bash
 pip install regrest
-```
 
-### From source
-
-```bash
-# Clone the repository
-git clone https://github.com/eycjur/regrest.git
-cd regrest
-
-# Using uv (recommended for development)
-uv sync --all-extras
-
-# Or using pip
-pip install -e .
-```
-
-## Development
-
-This project uses `make` for common development tasks:
-
-```bash
-# Show all available commands
-make help
-
-# Install dependencies
-make install
-
-# Format code
-make format
-
-# Run linters
-make lint
-
-# Run linters with auto-fix
-make lint-fix
-
-# Run tests
-make test
-
-# Run all checks (format + lint + test)
-make check
-
-# Clean generated files
-make clean
-
-# Run example
-make example
-```
-
-## Running Examples
-
-After installing regrest, you can try the examples:
-
-```bash
-# Clone the repository to get example files
-git clone https://github.com/eycjur/regrest.git
-cd regrest
-
-# Basic usage example
-python example.py
-
-# Custom class test
-python -m pytest tests/test_custom_class.py -v
-
-# Auto .gitignore test
-python -m pytest tests/test_gitignore.py -v
+# Optional: Install with Flask for better server performance
+pip install regrest[server]
 ```
 
 ## Quick Start
@@ -146,90 +82,96 @@ REGREST_UPDATE_MODE=1 python your_script.py
 
 ## Environment Variables
 
-Regrest supports configuration via environment variables:
+| Variable | Description | Values | Default |
+|----------|-------------|--------|---------|
+| `REGREST_LOG_LEVEL` | Log level | DEBUG, INFO, WARNING, ERROR, CRITICAL | `INFO` |
+| `REGREST_RAISE_ON_ERROR` | Raise exceptions on test failure | True/False | `False` |
+| `REGREST_UPDATE_MODE` | Update all records | True/False | `False` |
+| `REGREST_STORAGE_DIR` | Custom storage directory | Directory path | `.regrest` |
+| `REGREST_FLOAT_TOLERANCE` | Float comparison tolerance | Numeric value | `1e-9` |
 
-- `REGREST_LOG_LEVEL` - Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-- `REGREST_RAISE_ON_ERROR` - Raise exceptions on test failure (true/false, 1/0)
-- `REGREST_UPDATE_MODE` - Update all records (true/false, 1/0)
-- `REGREST_STORAGE_DIR` - Custom storage directory
-- `REGREST_FLOAT_TOLERANCE` - Float comparison tolerance (e.g., 1e-6)
+**Priority**: Constructor arguments > Environment variables > Default values
 
-Examples:
+## CLI Commands
 
-```bash
-# Run with debug logging
-REGREST_LOG_LEVEL=DEBUG python your_script.py
-
-# Update all records
-REGREST_UPDATE_MODE=1 python your_script.py
-
-# Strict mode (raise on error)
-REGREST_RAISE_ON_ERROR=true python your_script.py
-
-# Custom storage and tolerance
-REGREST_STORAGE_DIR=.test_records REGREST_FLOAT_TOLERANCE=1e-6 python your_script.py
-```
-
-**Priority order**: Constructor arguments > Environment variables > Default values
-
-## CLI Usage
-
-The CLI can be invoked in multiple ways:
+### List Records
 
 ```bash
-# After pip install -e .
-regrest list
-
-# Or using python -m
-python -m regrest list
-
-# Or directly
-python regrest/cli.py list
+regrest list              # List all records
+regrest list -k calculate # Filter by keyword
 ```
 
-### List all test records
+Lists all test records with module, function, arguments, results, and timestamps.
+
+### Delete Records
 
 ```bash
-# Show all records
-regrest list
-
-# Filter by keyword
-regrest list -k calculate
-regrest list -k __main__
+regrest delete abc123def456      # Delete by ID
+regrest delete --pattern "test_*" # Delete by pattern
+regrest delete --all             # Delete all records
 ```
 
-Output:
-```
-Found 2 test record(s):
-
-__main__:
-  calculate_price()
-    ID: abc123def456
-    Arguments:
-      args[0]: [{'price': 100}, {'price': 200}]
-      discount: 0.1
-    Result:
-      270.0
-    Recorded: 2024-01-15T10:30:00
-```
-
-### Delete records
+### Serve Web UI
 
 ```bash
-# Delete by ID
-regrest delete abc123
-
-# Delete by pattern
-regrest delete --pattern "mymodule.*"
-
-# Delete all records
-regrest delete --all
+regrest serve                    # Start on localhost:8000
+regrest serve --port 8080        # Custom port
+regrest serve --host 0.0.0.0     # Allow external access
+regrest serve --reload           # Enable hot reload
 ```
 
-### Custom storage directory
+Access the web UI at `http://localhost:8000` for:
+- **Hierarchical view** - Organized by module → function → record
+- **Search & filter** - Find records by keyword
+- **JSONesque display** - Syntax-highlighted, readable format
+- **Record management** - Delete individual or all records
 
-```bash
-regrest --storage-dir=.my_records list
+## Architecture
+
+### System Overview
+
+```mermaid
+graph TB
+    subgraph "User Code"
+        A[Decorated Function<br/>@regrest]
+    end
+
+    subgraph "Regrest Core"
+        B[Decorator<br/>decorator.py]
+        C[Storage<br/>storage.py]
+        D[Matcher<br/>matcher.py]
+        E[Config<br/>config.py]
+        F[Exceptions<br/>exceptions.py]
+    end
+
+    subgraph "Storage Layer"
+        G[JSON Files<br/>.regrest/*.json]
+        H[Pickle Serialization<br/>base64 encoded]
+    end
+
+    subgraph "CLI & Server"
+        I[CLI<br/>typer-based]
+        J[Web Server<br/>Flask/HTTP]
+        K[Web UI<br/>Tailwind CSS]
+    end
+
+    A --> B
+    B --> C
+    B --> D
+    B --> E
+    B --> F
+    C --> G
+    C --> H
+    I --> C
+    J --> C
+    J --> K
+
+    style A fill:#e1f5ff
+    style B fill:#fff4e1
+    style C fill:#f0e1ff
+    style D fill:#e1ffe1
+    style I fill:#ffe1e1
+    style J fill:#ffe1e1
 ```
 
 ## How It Works
@@ -249,30 +191,15 @@ regrest --storage-dir=.my_records list
    - If they don't match → `RegressionTestError` is raised ❌
 
 3. **Update Mode**: When you need to update the expected values:
-   - Use `@regrest(update=True)` or `REGREST_UPDATE=1`
+   - Use `@regrest(update=True)` or `REGREST_UPDATE_MODE=1`
    - The old record is replaced with the new result
 
 ## Configuration
 
-### Global Configuration
-
-```python
-from regrest import Config, set_config
-
-config = Config(
-    storage_dir='.my_records',
-    float_tolerance=1e-6,
-)
-set_config(config)
-```
-
-### Per-function Configuration
-
-```python
-@regrest(tolerance=1e-9)
-def precise_calculation():
-    return 3.141592653589793
-```
+| Level | Usage | Example |
+|-------|-------|---------|
+| **Global** | Configure all tests | `from regrest import Config, set_config`<br>`config = Config(storage_dir='.my_records', float_tolerance=1e-6)`<br>`set_config(config)` |
+| **Per-function** | Configure specific function | `@regrest(tolerance=1e-9)`<br>`def precise_calculation():`<br>`    return 3.141592653589793` |
 
 ## Advanced Features
 
@@ -284,203 +211,74 @@ The matcher intelligently compares:
 - **Collections**: Deep comparison for lists, dicts, sets
 - **Nested structures**: Recursive comparison with detailed error messages
 
-### Record Identification
-
-Records are identified by:
-- Module name
-- Function name
-- SHA256 hash of arguments (first 16 chars)
-
-This means different argument combinations create different records.
-
-## Examples
-
-### Example 1: Data Processing
-
-```python
-from regrest import regrest
-
-@regrest
-def process_data(data):
-    # Complex data transformation
-    result = {
-        'mean': sum(data) / len(data),
-        'max': max(data),
-        'min': min(data),
-    }
-    return result
-
-# First run records the result
-stats = process_data([1, 2, 3, 4, 5])
-
-# Future runs validate the result hasn't changed
-stats = process_data([1, 2, 3, 4, 5])  # Must match recorded values
-```
-
-### Example 2: API Response
-
-```python
-@regrest
-def format_user_response(user):
-    return {
-        'id': user['id'],
-        'name': f"{user['first_name']} {user['last_name']}",
-        'email': user['email'].lower(),
-    }
-
-user_data = {
-    'id': 123,
-    'first_name': 'John',
-    'last_name': 'Doe',
-    'email': 'JOHN@EXAMPLE.COM',
-}
-
-# Records: {'id': 123, 'name': 'John Doe', 'email': 'john@example.com'}
-response = format_user_response(user_data)
-```
-
-### Example 3: Numerical Computation
-
-```python
-import math
-
-@regrest(tolerance=1e-10)
-def calculate_distance(x1, y1, x2, y2):
-    return math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
-
-# Floating point calculations validated with tolerance
-distance = calculate_distance(0, 0, 3, 4)  # Should be 5.0
-```
-
-### Example 4: Custom Classes
-
-```python
-class Point:
-    """Custom class example."""
-    def __init__(self, x, y):
-        self.x = x
-        self.y = y
-
-    def __eq__(self, other):
-        """Equality definition is required."""
-        if not isinstance(other, Point):
-            return False
-        return self.x == other.x and self.y == other.y
-
-    def __repr__(self):
-        """For better error messages (recommended)."""
-        return f"Point({self.x}, {self.y})"
-
-
-@regrest
-def calculate_midpoint(p1, p2):
-    """Function returning custom class."""
-    return Point(
-        (p1.x + p2.x) / 2,
-        (p1.y + p2.y) / 2,
-    )
-
-# Custom classes are saved using pickle
-result = calculate_midpoint(Point(0, 0), Point(10, 10))
-```
-
-**Requirements for custom classes**:
-- ✅ Must be pickle-serializable
-- ✅ Must implement `__eq__` method (for comparison)
-- ✅ Recommended to implement `__repr__` (for better error messages)
-
 ## Storage Format
 
-Records are stored as JSON files in `.regrest/`:
+### File Structure
+
+Records are stored as JSON files in the `.regrest/` directory:
 
 ```
 .regrest/
-├── mymodule.calculate_price.abc123def456.json
-└── mymodule.process_data.789ghi012jkl.json
+├── .gitignore                                    # Auto-generated
+├── example.calculate_price.a1b2c3d4.json       # Record file
+└── mymodule.process_data.e5f6g7h8.json        # Record file
 ```
 
-Each file contains (for JSON-serializable data):
-```json
-{
-  "module": "mymodule",
-  "function": "calculate_price",
-  "args": {
-    "type": "json",
-    "data": [[{"price": 100}, {"price": 200}]]
-  },
-  "kwargs": {
-    "type": "json",
-    "data": {"discount": 0.1}
-  },
-  "result": {
-    "type": "json",
-    "data": 270.0
-  },
-  "timestamp": "2024-01-15T10:30:00.123456",
-  "record_id": "abc123def456"
-}
-```
+### File Naming Convention
 
-For custom classes (not JSON-serializable):
-```json
-{
-  "module": "mymodule",
-  "function": "calculate_midpoint",
-  "args": {
-    "type": "pickle",
-    "data": "gASVNAAAAAAAAACMCF9fbWFpbl9flIwFUG9pbnSUk5QpgZR9lCiMAXiUSwCMAXmUSwB1Yi4="
-  },
-  "result": {
-    "type": "pickle",
-    "data": "gASVNgAAAAAAAACMCF9fbWFpbl9flIwFUG9pbnSUk5QpgZR9lCiMAXiURwAUAAAAAAAAjAF5l..."
-  },
-  "timestamp": "2024-01-15T10:30:00.123456",
-  "record_id": "def456ghi789"
-}
-```
+`{module}.{function}.{record_id}.json`
 
-**Encoding methods**:
-- JSON-serializable data → Stored directly as JSON
-- Non-JSON-serializable data → Pickled + Base64 encoded
+| Component | Description | Example |
+|-----------|-------------|---------|
+| `module` | Module name where function is defined | `example`, `mymodule` |
+| `function` | Function name | `calculate_price`, `process_data` |
+| `record_id` | SHA256 hash of arguments (first 16 chars) | `a1b2c3d4e5f6g7h8` |
+
+**Record ID Generation**: Records are uniquely identified by:
+1. Module name
+2. Function name
+3. SHA256 hash of serialized arguments (args + kwargs)
+
+This means **different argument combinations create separate records** for the same function.
+
+### Encoding Strategy
+
+Regrest uses a **hybrid encoding** approach for maximum compatibility and readability:
+
+| Data Type | Storage Method | Readable | Example |
+|-----------|---------------|----------|---------|
+| **JSON-serializable**<br>(int, float, str, bool, list, dict, None) | JSON | ✅ Yes | `{"result": {"type": "json", "data": 270.0}}` |
+| **Non-JSON-serializable**<br>(custom classes, complex objects) | Pickle + Base64 | ❌ No | `{"result": {"type": "pickle", "data": "gASV..."}}` |
+
+**Advantages**:
+- ✅ **Readable**: Simple data types are stored as JSON for easy inspection
+- ✅ **Flexible**: Complex objects are automatically pickled
+- ✅ **Version control friendly**: JSON format produces clean diffs
+
+**Considerations**:
+- ⚠️ **Pickle compatibility**: May have issues across different Python versions
+- ⚠️ **Custom classes**: Must be pickle-serializable and implement `__eq__` for comparison
 
 ## Best Practices
 
-1. **Version Control**:
-   - **Auto-exclude**: `.regrest/.gitignore` is automatically created to exclude test records on first run
-   - **Team sharing**: To share records with your team, delete `.regrest/.gitignore`
-   - **Directory tracking**: The `.regrest/` directory itself is tracked, but files inside are ignored
-
-2. **Deterministic Functions**: Use `@regrest` on functions with deterministic outputs (same input → same output)
-
-3. **Update Workflow**: When intentionally changing behavior:
-   ```bash
-   # Review changes, then update records
-   REGREST_UPDATE=1 python your_script.py
-   ```
-
-4. **Selective Testing**: Use patterns to test specific modules:
-   ```bash
-   regrest delete --pattern "old_module.*"  # Remove old tests
-   ```
+| Practice | Description |
+|----------|-------------|
+| **Deterministic functions** | Use `@regrest` only on functions with consistent outputs (same input → same output) |
+| **Auto .gitignore** | Test records are automatically excluded from git via `.regrest/.gitignore` |
+| **Update workflow** | When intentionally changing behavior, update records: `REGREST_UPDATE_MODE=1 python script.py` |
 
 ## Limitations
 
-- **Non-deterministic functions**: Don't use `@regrest` on functions with random output, timestamps, etc.
-- **Large outputs**: Very large return values may make storage files unwieldy
-- **Python version**: Requires Python 3.9 or higher
-- **Serialization**:
-  - Arguments and return values must be JSON or pickle-serializable
-  - Custom classes must implement `__eq__` method (for comparison)
-  - Pickle usage may have compatibility issues across Python versions
+| Limitation | Description |
+|------------|-------------|
+| **Python version** | Requires Python 3.9+ |
+| **Non-deterministic functions** | Don't use on functions with random outputs, timestamps, or external API calls |
+| **Serialization** | Data must be JSON or pickle-serializable; custom classes need `__eq__` for comparison |
+| **Pickle compatibility** | May have issues across different Python versions |
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-Before submitting, please ensure:
-1. Run `make check` to verify all tests and linters pass
-2. Add tests for new features
-3. Update documentation as needed
+Contributions welcome! Run `make check` before submitting PRs.
 
 ## License
 

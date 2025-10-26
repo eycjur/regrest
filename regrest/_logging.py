@@ -34,16 +34,20 @@ def get_logger(name: str, level: int = logging.INFO) -> logging.Logger:
     Returns:
         Configured logger
     """
-    formatter = logging.Formatter(
-        "\033[92m%(levelname)-8s [%(asctime)s] %(name)s\033[0m: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-    handler = logging.StreamHandler()
-    handler.setFormatter(formatter)
-
     logger = logging.getLogger(name)
-    logger.addHandler(handler)
-    logger.setLevel(_get_log_level_from_env() or level)
+
+    # Avoid adding duplicate handlers
+    if not logger.handlers:
+        formatter = logging.Formatter(
+            "\033[92m%(levelname)-8s [%(asctime)s] %(name)s\033[0m: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+        handler = logging.StreamHandler()
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+
+    env_level = _get_log_level_from_env()
+    logger.setLevel(env_level if env_level else level)
     logger.propagate = False
     return logger
 

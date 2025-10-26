@@ -55,7 +55,7 @@ class Matcher:
                 f"got {type(actual).__name__}",
             )
 
-        # None
+        # None (actual is also None due to type check above)
         if expected is None:
             return MatchResult(True)
 
@@ -94,6 +94,10 @@ class Matcher:
         # Sets
         if isinstance(expected, set):
             return self._match_set(expected, actual, path)
+
+        # Custom classes: compare using __dict__
+        if hasattr(expected, "__dict__") and hasattr(actual, "__dict__"):
+            return self._match_object(expected, actual, path)
 
         # Default: use equality
         if expected != actual:
@@ -230,3 +234,17 @@ class Matcher:
             )
 
         return MatchResult(True)
+
+    def _match_object(self, expected: Any, actual: Any, path: str) -> MatchResult:
+        """Compare two custom objects using their __dict__.
+
+        Args:
+            expected: Expected object
+            actual: Actual object
+            path: Current path
+
+        Returns:
+            MatchResult
+        """
+        # Compare __dict__ recursively
+        return self._match_dict(expected.__dict__, actual.__dict__, path)

@@ -27,7 +27,8 @@ regrest/
 ├── storage.py      # ファイルストレージ（JSON/Pickle）
 ├── matcher.py      # 値の比較ロジック
 ├── config.py       # グローバル設定
-└── cli.py          # CLIコマンド
+├── cli.py          # CLIコマンド
+└── server.py       # Web可視化サーバー
 ```
 
 ### CLI呼び出し方法
@@ -158,21 +159,170 @@ def _generate_id(self):
 - ハッシュ衝突のリスクは実用上無視できる（SHA256の16文字）
 - ファイル名として使用可能
 
-### 6. カスタムクラスの要件: `__eq__` の実装
+### 6. カスタムクラスの比較: `__dict__` による自動比較
 
-**要件**:
+**実装**（matcher.py）:
 ```python
-class Point:
-    def __eq__(self, other):  # 必須
-        if not isinstance(other, Point):
-            return False
-        return self.x == other.x and self.y == other.y
+# Custom classes: compare using __dict__
+if hasattr(expected, "__dict__") and hasattr(actual, "__dict__"):
+    return self._match_object(expected, actual, path)
+
+def _match_object(self, expected: Any, actual: Any, path: str) -> MatchResult:
+    """Compare two custom objects using their __dict__."""
+    return self._match_dict(expected.__dict__, actual.__dict__, path)
 ```
 
 **理由**:
-- Pickleで復元後の比較に必要
-- デフォルトの `__eq__` はオブジェクトIDで比較（常にFalse）
-- 明示的な実装を要求することで意図を明確化
+- `__eq__` の実装を強制しない（より柔軟）
+- `__dict__` で属性を再帰的に比較
+- 型チェック（`type(expected) is not type(actual)`）は別途実行済み
+- ユーザーが `__eq__` を実装していれば、それが優先される
+
+**メリット**:
+- ✅ `__eq__` なしでも比較可能
+- ✅ ネストした複雑なオブジェクトにも対応
+- ✅ 詳細なエラーメッセージ（どの属性が異なるか表示）
+
+**注意**:
+- `@dataclass` は自動的に `__eq__` を生成するため、そちらが優先される
+- `__eq__` を実装している場合、デフォルトの比較が先に使われる
+
+### 7. Pickle互換性: `__main__` モジュール名変換
+
+**課題**: `python example.py` で実行したスクリプトは `__main__` モジュールとして実行されるため、カスタムクラスがPickleで保存される際に `__main__` として記録される。しかし、Webサーバーから読み込む際には `__main__` モジュールが存在しないため、デシリアライズに失敗する。
+
+**実装**（decorator.py）:
+```python
+# Convert __main__ to actual script filename
+if module == "__main__":
+    main_module = sys.modules.get("__main__")
+    if main_module and hasattr(main_module, "__file__"):
+        main_file = main_module.__file__
+        if main_file:
+            # Get filename without extension
+            module = os.path.splitext(os.path.basename(main_file))[0]
+
+            # Register __main__ as the actual module name
+            if module not in sys.modules:
+                sys.modules[module] = main_module
+```
+
+**実装**（storage.py）:
+```python
+class ModuleRemappingUnpickler(pickle.Unpickler):
+    """Custom unpickler that remaps __main__ to actual module names."""
+
+    def find_class(self, module: str, name: str):
+        """Find class, remapping __main__ to actual module name."""
+        if module == "__main__":
+            module = self.module_name
+
+        # Try to find in sys.modules first
+        if module in sys.modules:
+            try:
+                return getattr(sys.modules[module], name)
+            except AttributeError:
+                pass
+
+        # Fallback to import
+        try:
+            mod = importlib.import_module(module)
+            return getattr(mod, name)
+        except (ImportError, AttributeError):
+            return super().find_class(module, name)
+```
+
+**理由**:
+- スクリプト実行時とサーバー実行時でモジュール名が異なる問題を解決
+- `sys.modules` にエイリアスを登録することで、両方の文脈でアクセス可能
+- カスタムUnpicklerで柔軟なモジュール解決を実現
+
+**メリット**:
+- ✅ `python example.py` で作成した記録を `regrest serve` で読み込める
+- ✅ ユーザーは意識する必要なし
+- ✅ 既存の記録ファイルとの互換性を維持
+
+### 8. バージョン管理: Single Source of Truth
+
+**選択**: `pyproject.toml` を唯一の真実の源（Single Source of Truth）とし、`__init__.py` では動的に読み込む
+
+**実装**（`regrest/__init__.py`）:
+```python
+try:
+    from importlib.metadata import version
+    __version__ = version("regrest")
+except Exception:
+    # Fallback for development mode or if package is not installed
+    __version__ = "unknown"
+```
+
+**理由**:
+- バージョン情報の重複を避ける
+- `pyproject.toml` のみを更新すれば、パッケージ全体のバージョンが更新される
+- インストール後は `importlib.metadata` が自動的に正しいバージョンを取得
+- 開発時（`uv sync`）でも動作する
+
+**メリット**:
+- ✅ バージョン管理が1箇所に集約（`pyproject.toml`のみ）
+- ✅ 手動での同期が不要（ヒューマンエラー防止）
+- ✅ Python標準の方法（`importlib.metadata`）を使用
+- ✅ `make version-check` がシンプルになる
+
+**トレードオフ**:
+- ⚠️ パッケージがインストールされていない状態では `__version__ = "unknown"` になる
+  - 通常の使用では問題なし（`uv sync` でインストールされる）
+
+**公開ワークフロー**:
+```bash
+# 1. pyproject.toml のバージョンを更新
+# 2. コミット
+git add .
+git commit -m "Bump version to 0.2.0"
+
+# 3. 公開（全チェック + Gitタグ作成 + PyPI公開）
+make publish
+```
+
+`make publish` の実行内容:
+1. `make check` - format, lint, test を実行
+2. `make version-check` - `pyproject.toml` からバージョン取得
+3. `make build` - パッケージをビルド
+4. `make git-check` - Git状態確認、タグ作成・プッシュ
+5. 最終確認プロンプト → PyPI公開
+
+### 9. Web UI設計: JSONesque表示とビジュアル階層
+
+**選択**: JSON風の表示フォーマットと背景色による階層表現
+
+**実装**:
+```javascript
+// クラス: ▼ Company( ... )
+// 辞書: ▼ { ... }
+// 配列: ▼ [ ... ]
+
+// 階層ごとの背景色
+// - モジュール: 紫-藍色グラデーション
+// - 関数: 青色
+// - レコードID: 白
+// - レコード内容: 白（Arguments/Result: グレー）
+```
+
+**理由**:
+1. **可読性**: JSONに似た表記で直感的に理解しやすい
+2. **視覚的階層**: 背景色で包含関係を明確化
+3. **型の区別**: クラス `()` と辞書 `{}` を明確に区別
+4. **固定インデント**: 4文字固定幅でPythonコードと同じ感覚
+
+**実装の詳細**:
+- トグルアイコンはキー名の前に配置（`▼ headquarters: Address()`）
+- 4文字幅（`4ch`）の固定インデントでPythonコードと一貫性
+- `__class__` と `__module__` メタデータでクラスと辞書を判別
+- 関数間にグレー背景の余白を設けて視覚的にグループ化
+
+**メリット**:
+- ✅ 複雑なネスト構造も理解しやすい
+- ✅ クラスインスタンスと辞書を一目で区別可能
+- ✅ Pythonコードとの一貫性
 
 ## パフォーマンス考慮
 
@@ -274,6 +424,8 @@ tests/
 - [x] ruffによるフォーマットとリント
 - [x] Makefileによるタスク自動化
 - [x] PyPIへの公開
+- [x] Web可視化サーバー（`regrest serve`）
+- [x] カスタムクラスの `__dict__` 比較
 - [ ] エラーメッセージの改善
 - [ ] より多くのテストケース
 - [ ] CI/CDの完全な導入（GitHub Actions設定済み）
@@ -281,13 +433,14 @@ tests/
 ### 中期
 - [ ] 記録の差分表示（`regrest diff`）
 - [ ] 記録のマージ（`regrest merge`）
+- [ ] Web UIの機能拡張（記録の削除、編集、エクスポート）
 - [ ] 読み込みキャッシュの実装
 - [ ] カバレッジレポートの改善
 
 ### 長期
 - [ ] プラグインシステム
 - [ ] DBバックエンドのサポート
-- [ ] Web UIの提供
+- [ ] Web UIのさらなる拡張（グラフ、統計分析）
 
 ## コントリビューション
 
@@ -355,6 +508,27 @@ make clean
 MIT License
 
 ## 開発履歴
+
+### 0.2.0 (2025-01-XX) - 開発中
+- **Web可視化サーバー** - `regrest serve` で記録をブラウザで閲覧可能に
+  - 美しいダッシュボードUI（検索、詳細表示）
+  - RESTful API（`/api/records`）
+  - レスポンシブデザイン
+  - ホットリロード機能（`--reload` オプション）
+  - JSONesque表示フォーマット（クラス `()` vs 辞書 `{}`）
+  - 階層的サイドバー（モジュール→関数の展開可能なツリー）
+  - URLハッシュナビゲーション（共有可能なリンク）
+  - 背景色による視覚的階層表現
+  - 4文字固定幅インデント
+  - 個別レコードの削除機能
+- **カスタムクラス比較の改善** - `__eq__` なしでも `__dict__` で自動比較
+  - より柔軟な比較ロジック
+  - ネストした複雑なオブジェクトに対応
+  - 詳細なエラーメッセージ
+- **Pickle互換性の改善** - `__main__` モジュール名変換
+  - スクリプト実行時に `__main__` を実際のファイル名に変換
+  - カスタムUnpicklerでモジュール名を柔軟に解決
+  - Webサーバーからの記録読み込みに対応
 
 ### 0.1.0 (2025-01-XX)
 - **PyPIへの公開** - `pip install regrest`でインストール可能に

@@ -15,8 +15,9 @@
 
 - 🎯 **シンプルなデコレーターAPI** - 関数に `@regrest` を追加するだけ
 - 📝 **自動記録** - 初回実行で出力を記録、その後の実行で検証
-- 🔍 **スマートな比較** - float、dict、list、ネストした構造を適切に処理
-- 🛠 **CLIツール** - テスト記録の一覧表示、確認、削除が可能
+- 🔍 **スマートな比較** - float、dict、list、ネストした構造、カスタムクラスを適切に処理
+- 🛠 **CLIツール** - テスト記録の一覧表示、確認、削除、可視化が可能
+- 📊 **Web可視化** - JSONesque表示、階層的ナビゲーション、ホットリロード機能を備えた美しいダッシュボード
 - ⚙️ **カスタマイズ可能** - 許容誤差、保存場所などを設定可能
 - 🔧 **自動.gitignore** - 初回実行時に `.regrest/.gitignore` を自動作成してテスト記録を除外
 
@@ -26,76 +27,11 @@
 
 ## インストール
 
-### PyPIから（推奨）
-
 ```bash
 pip install regrest
-```
 
-### ソースから
-
-```bash
-# リポジトリをクローン
-git clone https://github.com/eycjur/regrest.git
-cd regrest
-
-# uvを使用（開発時推奨）
-uv sync --all-extras
-
-# またはpipを使用
-pip install -e .
-```
-
-## 開発
-
-このプロジェクトは `make` を使用して開発タスクを実行します：
-
-```bash
-# 利用可能なコマンド一覧を表示
-make help
-
-# 依存関係をインストール
-make install
-
-# コードをフォーマット
-make format
-
-# リンターを実行
-make lint
-
-# リンターを実行し自動修正
-make lint-fix
-
-# テストを実行
-make test
-
-# すべてのチェックを実行（format + lint + test）
-make check
-
-# 生成されたファイルをクリーンアップ
-make clean
-
-# サンプルを実行
-make example
-```
-
-## サンプルの実行
-
-regrestをインストール後、サンプルを試すことができます：
-
-```bash
-# サンプルファイルを取得するためにリポジトリをクローン
-git clone https://github.com/eycjur/regrest.git
-cd regrest
-
-# 基本的な使用例
-python example.py
-
-# カスタムクラスのテスト
-python -m pytest tests/test_custom_class.py -v
-
-# .gitignore自動作成のテスト
-python -m pytest tests/test_gitignore.py -v
+# オプション: サーバーのパフォーマンス向上のためFlaskをインストール
+pip install regrest[server]
 ```
 
 ## クイックスタート
@@ -146,90 +82,85 @@ REGREST_UPDATE_MODE=1 python your_script.py
 
 ## 環境変数
 
-Regrestは環境変数による設定をサポートしています：
-
-- `REGREST_LOG_LEVEL` - ログレベル (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-- `REGREST_RAISE_ON_ERROR` - テスト失敗時に例外を投げる (true/false, 1/0)
-- `REGREST_UPDATE_MODE` - すべての記録を更新 (true/false, 1/0)
-- `REGREST_STORAGE_DIR` - カスタムストレージディレクトリ
-- `REGREST_FLOAT_TOLERANCE` - 浮動小数点の許容誤差 (例: 1e-6)
-
-使用例：
-
-```bash
-# デバッグログを有効にして実行
-REGREST_LOG_LEVEL=DEBUG python your_script.py
-
-# すべての記録を更新
-REGREST_UPDATE_MODE=1 python your_script.py
-
-# 厳密モード（エラーで例外を投げる）
-REGREST_RAISE_ON_ERROR=true python your_script.py
-
-# カスタムストレージと許容誤差
-REGREST_STORAGE_DIR=.test_records REGREST_FLOAT_TOLERANCE=1e-6 python your_script.py
-```
+| 変数 | 説明 | 値 | デフォルト |
+|------|------|----|----|
+| `REGREST_LOG_LEVEL` | ログレベル | DEBUG, INFO, WARNING, ERROR, CRITICAL | `INFO` |
+| `REGREST_RAISE_ON_ERROR` | テスト失敗時に例外を投げる | True/False | `False` |
+| `REGREST_UPDATE_MODE` | すべての記録を更新 | True/False | `False` |
+| `REGREST_STORAGE_DIR` | カスタムストレージディレクトリ | ディレクトリパス | `.regrest` |
+| `REGREST_FLOAT_TOLERANCE` | 浮動小数点の許容誤差 | 数値 | `1e-9` |
 
 **優先順位**: コンストラクタ引数 > 環境変数 > デフォルト値
 
-## CLI使用方法
+## CLIコマンド
 
-CLIは複数の方法で呼び出せます：
-
-```bash
-# pip install -e . の後
-regrest list
-
-# または python -m を使用
-python -m regrest list
-
-# または直接実行
-python regrest/cli.py list
-```
-
-### すべてのテスト記録を一覧表示
+### 記録の一覧表示
 
 ```bash
-# すべての記録を表示
-regrest list
-
-# キーワードで絞り込み
-regrest list -k calculate
-regrest list -k __main__
+regrest list              # すべての記録を表示
+regrest list -k calculate # キーワードでフィルタリング
 ```
 
-出力例：
-```
-Found 2 test record(s):
-
-__main__:
-  calculate_price()
-    ID: abc123def456
-    Arguments:
-      args[0]: [{'price': 100}, {'price': 200}]
-      discount: 0.1
-    Result:
-      270.0
-    Recorded: 2024-01-15T10:30:00
-```
+モジュール、関数、引数、結果、タイムスタンプを含むテスト記録の一覧を表示します。
 
 ### 記録の削除
 
 ```bash
-# IDで削除
-regrest delete abc123
-
-# パターンで削除
-regrest delete --pattern "mymodule.*"
-
-# すべての記録を削除
-regrest delete --all
+regrest delete abc123def456      # IDで削除
+regrest delete --pattern "test_*" # パターンで削除
+regrest delete --all             # すべての記録を削除
 ```
 
-### カスタム保存ディレクトリ
+### Web UIの起動
 
 ```bash
-regrest --storage-dir=.my_records list
+regrest serve                    # localhost:8000で起動
+regrest serve --port 8080        # カスタムポート
+regrest serve --host 0.0.0.0     # 外部アクセスを許可
+regrest serve --reload           # ホットリロードを有効化
+```
+
+`http://localhost:8000` にアクセスして以下の機能を利用できます：
+- **階層的ビュー** - モジュール → 関数 → レコードで整理
+- **検索 & フィルター** - キーワードで記録を検索
+- **JSONesque表示** - シンタックスハイライト付きの読みやすい形式
+- **レコード管理** - 個別またはすべての記録を削除
+
+## アーキテクチャ
+
+### システム全体図
+
+```mermaid
+graph TB
+    A["@regrest<br/>デコレートされた関数"]
+    B["Decorator<br/>decorator.py"]
+    C["Storage<br/>storage.py"]
+    D["Matcher<br/>matcher.py"]
+    E["Config<br/>config.py"]
+    F["Exceptions<br/>exceptions.py"]
+    G["JSON Files<br/>.regrest/*.json"]
+    H["Pickle<br/>base64エンコード"]
+    I["CLI<br/>typerベース"]
+    J["Web Server<br/>Flask/HTTP"]
+    K["Web UI<br/>Tailwind CSS"]
+
+    A --> B
+    B --> C
+    B --> D
+    B --> E
+    B --> F
+    C --> G
+    C --> H
+    I --> C
+    J --> C
+    J --> K
+
+    style A fill:#e1f5ff
+    style B fill:#fff4e1
+    style C fill:#f0e1ff
+    style D fill:#e1ffe1
+    style I fill:#ffe1e1
+    style J fill:#ffe1e1
 ```
 
 ## 仕組み
@@ -249,30 +180,15 @@ regrest --storage-dir=.my_records list
    - 一致しない → `RegressionTestError` が発生 ❌
 
 3. **更新モード**: 期待値を更新する必要がある場合：
-   - `@regrest(update=True)` または `REGREST_UPDATE=1` を使用
+   - `@regrest(update=True)` または `REGREST_UPDATE_MODE=1` を使用
    - 古い記録が新しい結果で置き換えられる
 
 ## 設定
 
-### グローバル設定
-
-```python
-from regrest import Config, set_config
-
-config = Config(
-    storage_dir='.my_records',
-    float_tolerance=1e-6,
-)
-set_config(config)
-```
-
-### 関数ごとの設定
-
-```python
-@regrest(tolerance=1e-9)
-def precise_calculation():
-    return 3.141592653589793
-```
+| レベル | 用途 | 例 |
+|--------|------|-----|
+| **グローバル** | すべてのテストに適用 | `from regrest import Config, set_config`<br>`config = Config(storage_dir='.my_records', float_tolerance=1e-6)`<br>`set_config(config)` |
+| **関数ごと** | 特定の関数に適用 | `@regrest(tolerance=1e-9)`<br>`def precise_calculation():`<br>`    return 3.141592653589793` |
 
 ## 高度な機能
 
@@ -284,194 +200,70 @@ def precise_calculation():
 - **コレクション**: リスト、辞書、セットの深い比較
 - **ネストした構造**: 詳細なエラーメッセージ付きの再帰的比較
 
-### 記録の識別
-
-記録は以下で識別されます：
-- モジュール名
-- 関数名
-- 引数のSHA256ハッシュ（先頭16文字）
-
-つまり、引数の組み合わせが異なると別々の記録が作成されます。
-
-## 使用例
-
-### 例1: データ処理
-
-```python
-from regrest import regrest
-
-@regrest
-def process_data(data):
-    # 複雑なデータ変換
-    result = {
-        'mean': sum(data) / len(data),
-        'max': max(data),
-        'min': min(data),
-    }
-    return result
-
-# 初回実行で結果を記録
-stats = process_data([1, 2, 3, 4, 5])
-
-# 将来の実行で結果が変わっていないことを検証
-stats = process_data([1, 2, 3, 4, 5])  # 記録された値と一致する必要あり
-```
-
-### 例2: APIレスポンス
-
-```python
-@regrest
-def format_user_response(user):
-    return {
-        'id': user['id'],
-        'name': f"{user['first_name']} {user['last_name']}",
-        'email': user['email'].lower(),
-    }
-
-user_data = {
-    'id': 123,
-    'first_name': 'John',
-    'last_name': 'Doe',
-    'email': 'JOHN@EXAMPLE.COM',
-}
-
-# 記録: {'id': 123, 'name': 'John Doe', 'email': 'john@example.com'}
-response = format_user_response(user_data)
-```
-
-### 例3: 数値計算
-
-```python
-import math
-
-@regrest(tolerance=1e-10)
-def calculate_distance(x1, y1, x2, y2):
-    return math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
-
-# 浮動小数点計算を許容誤差付きで検証
-distance = calculate_distance(0, 0, 3, 4)  # 5.0のはず
-```
-
-### 例4: カスタムクラス
-
-```python
-class Point:
-    """カスタムクラスの例."""
-    def __init__(self, x, y):
-        self.x = x
-        self.y = y
-
-    def __eq__(self, other):
-        """等価性の定義が必須."""
-        if not isinstance(other, Point):
-            return False
-        return self.x == other.x and self.y == other.y
-
-    def __repr__(self):
-        """エラーメッセージ用（推奨）."""
-        return f"Point({self.x}, {self.y})"
-
-
-@regrest
-def calculate_midpoint(p1, p2):
-    """カスタムクラスを返す関数."""
-    return Point(
-        (p1.x + p2.x) / 2,
-        (p1.y + p2.y) / 2,
-    )
-
-# カスタムクラスはpickleで保存される
-result = calculate_midpoint(Point(0, 0), Point(10, 10))
-```
-
-**カスタムクラスの要件**：
-- ✅ Pickleでシリアライズ可能であること
-- ✅ `__eq__` メソッドを実装すること（比較のため）
-- ✅ `__repr__` メソッドの実装を推奨（わかりやすいエラーメッセージのため）
-
 ## 保存形式
 
-記録は `.regrest/` ディレクトリにJSONファイルとして保存されます：
+### ファイル構造
+
+記録はJSONファイルとして `.regrest/` ディレクトリに保存されます：
 
 ```
 .regrest/
-├── mymodule.calculate_price.abc123def456.json
-└── mymodule.process_data.789ghi012jkl.json
+├── .gitignore                                    # 自動生成
+├── example.calculate_price.a1b2c3d4.json       # 記録ファイル
+└── mymodule.process_data.e5f6g7h8.json        # 記録ファイル
 ```
 
-各ファイルの内容（JSONシリアライズ可能なデータの場合）：
-```json
-{
-  "module": "mymodule",
-  "function": "calculate_price",
-  "args": {
-    "type": "json",
-    "data": [[{"price": 100}, {"price": 200}]]
-  },
-  "kwargs": {
-    "type": "json",
-    "data": {"discount": 0.1}
-  },
-  "result": {
-    "type": "json",
-    "data": 270.0
-  },
-  "timestamp": "2024-01-15T10:30:00.123456",
-  "record_id": "abc123def456"
-}
-```
+### ファイル名の規則
 
-カスタムクラスなどJSONシリアライズできないデータの場合：
-```json
-{
-  "module": "mymodule",
-  "function": "calculate_midpoint",
-  "args": {
-    "type": "pickle",
-    "data": "gASVNAAAAAAAAACMCF9fbWFpbl9flIwFUG9pbnSUk5QpgZR9lCiMAXiUSwCMAXmUSwB1Yi4="
-  },
-  "result": {
-    "type": "pickle",
-    "data": "gASVNgAAAAAAAACMCF9fbWFpbl9flIwFUG9pbnSUk5QpgZR9lCiMAXiURwAUAAAAAAAAjAF5l..."
-  },
-  "timestamp": "2024-01-15T10:30:00.123456",
-  "record_id": "def456ghi789"
-}
-```
+`{module}.{function}.{record_id}.json`
 
-**エンコーディング方式**：
-- JSONシリアライズ可能 → そのまま保存
-- JSONシリアライズ不可 → Pickleでシリアライズ + Base64エンコード
+| 要素 | 説明 | 例 |
+|------|------|-----|
+| `module` | 関数が定義されているモジュール名 | `example`, `mymodule` |
+| `function` | 関数名 | `calculate_price`, `process_data` |
+| `record_id` | 引数のSHA256ハッシュ（先頭16文字） | `a1b2c3d4e5f6g7h8` |
+
+**レコードIDの生成**: 記録は以下で一意に識別されます：
+1. モジュール名
+2. 関数名
+3. シリアライズされた引数のSHA256ハッシュ（args + kwargs）
+
+つまり、**同じ関数でも引数が異なれば別々の記録が作成されます**。
+
+### エンコーディング方式
+
+Regrestは**ハイブリッドエンコーディング**方式を採用し、互換性と可読性を両立しています：
+
+| データ型 | 保存方法 | 可読性 | 例 |
+|---------|---------|--------|-----|
+| **JSONシリアライズ可能**<br>(int, float, str, bool, list, dict, None) | JSON | ✅ あり | `{"result": {"type": "json", "data": 270.0}}` |
+| **JSONシリアライズ不可**<br>(カスタムクラス、複雑なオブジェクト) | Pickle + Base64 | ❌ なし | `{"result": {"type": "pickle", "data": "gASV..."}}` |
+
+**利点**：
+- ✅ **可読性**: シンプルなデータ型はJSONで保存され、簡単に確認できる
+- ✅ **柔軟性**: 複雑なオブジェクトは自動的にPickleでシリアライズ
+- ✅ **バージョン管理フレンドリー**: JSON形式はクリーンなdiffを生成
+
+**注意点**：
+- ⚠️ **Pickle互換性**: Pythonバージョン間で問題が発生する可能性あり
+- ⚠️ **カスタムクラス**: Pickleでシリアライズ可能であり、比較のために `__eq__` を実装する必要あり
 
 ## ベストプラクティス
 
-1. **バージョン管理**:
-   - **自動除外**: 初回実行時に `.regrest/.gitignore` が自動作成され、テスト記録が除外されます
-   - **チーム共有**: チーム全体で記録を共有したい場合は、`.regrest/.gitignore` を削除してください
-   - **ディレクトリ自体は追跡**: `.regrest/` ディレクトリは追跡されますが、中のファイル（テスト記録）は無視されます
-
-2. **決定的な関数**: `@regrest` は決定的な出力を持つ関数（同じ入力 → 同じ出力）で使用
-
-3. **更新ワークフロー**: 意図的に動作を変更する場合：
-   ```bash
-   # 変更を確認してから記録を更新
-   REGREST_UPDATE=1 python your_script.py
-   ```
-
-4. **選択的テスト**: パターンを使って特定のモジュールをテスト：
-   ```bash
-   regrest delete --pattern "old_module.*"  # 古いテストを削除
-   ```
+| プラクティス | 説明 |
+|------------|------|
+| **決定的な関数** | `@regrest` は同じ入力で同じ出力を返す関数でのみ使用する |
+| **自動 .gitignore** | テスト記録は `.regrest/.gitignore` により自動的にgitから除外される |
+| **更新ワークフロー** | 意図的に動作を変更した場合は記録を更新: `REGREST_UPDATE_MODE=1 python script.py` |
 
 ## 制限事項
 
-- **非決定的な関数**: ランダムな出力、タイムスタンプなどを含む関数には `@regrest` を使用しない
-- **大きな出力**: 非常に大きな戻り値は保存ファイルが扱いにくくなる可能性がある
-- **Pythonバージョン**: Python 3.9以上が必要
-- **シリアライズ**:
-  - 引数と戻り値はJSONまたはPickleでシリアライズ可能である必要がある
-  - カスタムクラスは `__eq__` メソッドが必須（比較のため）
-  - Pickleを使用するとPythonバージョン間の互換性に注意が必要
+| 制限事項 | 説明 |
+|---------|------|
+| **Pythonバージョン** | Python 3.9以上が必要 |
+| **非決定的な関数** | ランダム値、タイムスタンプ、外部API呼び出しを含む関数には使用しない |
+| **シリアライゼーション** | データはJSONまたはPickleでシリアライズ可能である必要があり、カスタムクラスは `__eq__` が必須 |
+| **Pickle互換性** | Pythonバージョン間で互換性の問題が発生する可能性がある |
 
 ## コントリビューション
 

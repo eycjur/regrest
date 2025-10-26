@@ -2,18 +2,15 @@
 
 import functools
 import logging
+import os
+import sys
 from typing import Any, Callable, Optional
 
 from ._logging import regrest_logger
 from .config import get_config
+from .exceptions import RegressionTestError
 from .matcher import Matcher
 from .storage import Storage, TestRecord
-
-
-class RegressionTestError(AssertionError):
-    """Exception raised when regression test fails."""
-
-    pass
 
 
 def regrest(
@@ -63,6 +60,20 @@ def regrest(
             module = f.__module__
             function = f.__name__
 
+            # Convert __main__ to actual script filename
+            if module == "__main__":
+                main_module = sys.modules.get("__main__")
+                if main_module and hasattr(main_module, "__file__"):
+                    main_file = main_module.__file__
+                    if main_file:
+                        # Get filename without extension
+                        module = os.path.splitext(os.path.basename(main_file))[0]
+
+                        # Register __main__ as the actual module name in sys.modules
+                        # This allows pickle to find classes when unpickling
+                        if module not in sys.modules:
+                            sys.modules[module] = main_module
+
             # Debug logging: log function call with arguments
             if regrest_logger.isEnabledFor(logging.DEBUG):
                 regrest_logger.debug(
@@ -94,7 +105,31 @@ def regrest(
                 )
 
             # Try to find existing record
-            existing_record = storage.find(module, function, args, kwargs)
+            record_load_failed = False
+            try:
+                existing_record = storage.find(module, function, args, kwargs)
+            except (AttributeError, ImportError) as e:
+                # Failed to load record due to missing class or module
+                error_message = (
+                    f"Failed to load existing record for {module}.{function}\n{str(e)}"
+                )
+
+                if should_raise_on_error:
+                    raise RegressionTestError(error_message) from e
+                else:
+                    # Log error but don't overwrite the corrupted record
+                    for line in error_message.split("\n"):
+                        if line:
+                            regrest_logger.error(line)
+                    record_load_failed = True
+                    existing_record = None
+
+            # Don't save if record load failed (to avoid overwriting corrupted records)
+            if record_load_failed:
+                regrest_logger.warning(
+                    "Skipping save for %s.%s due to record load error", module, function
+                )
+                return result
 
             if existing_record is None or should_update:
                 # Record mode: save the result

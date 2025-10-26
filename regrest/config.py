@@ -116,9 +116,9 @@ class Config:
             return
 
         # Create .gitignore to ignore all files
-        with open(gitignore_path, "w", encoding="utf-8") as f:
-            f.write("# Ignore all files in this directory\n")
-            f.write("*\n")
+        gitignore_path.write_text(
+            "# Ignore all files in this directory\n*\n", encoding="utf-8"
+        )
 
 
 # Global config instance
