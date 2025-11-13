@@ -175,6 +175,157 @@ def delete(
 
 
 @app.command()
+def verify(
+    ctx: typer.Context,
+    k: Annotated[
+        Optional[str],
+        typer.Option(
+            "-k", help="Keyword to filter records (matches module or function name)"
+        ),
+    ] = None,
+    tolerance: Annotated[
+        Optional[float],
+        typer.Option("--tolerance", help="Float comparison tolerance"),
+    ] = None,
+) -> None:
+    """Verify all recorded test records by re-executing functions.
+
+    This command:
+    1. Loads all recorded test data
+    2. Re-executes each function with recorded arguments
+    3. Compares results with recorded values
+    4. Reports pass/fail status
+
+    Examples:
+        regrest verify                      # Verify all records
+        regrest verify -k calculate         # Verify only 'calculate' functions
+        regrest verify --tolerance 0.001    # Custom float tolerance
+    """
+    storage_dir = ctx.obj["storage_dir"]
+    _setup_config(storage_dir)
+
+    storage = Storage()
+    records = storage.list_all()
+
+    if not records:
+        typer.echo("No test records found.")
+        return
+
+    # Filter records by keyword
+    if k:
+        keyword_lower = k.lower()
+        records = [
+            r
+            for r in records
+            if keyword_lower in r.module.lower() or keyword_lower in r.function.lower()
+        ]
+
+    if not records:
+        typer.echo("No test records found matching the filter.")
+        return
+
+    # Sort by module, function, timestamp
+    records.sort(key=lambda r: (r.module, r.function, r.timestamp))
+
+    typer.echo(f"Verifying {len(records)} test record(s)...\n")
+
+    passed = 0
+    failed = 0
+    errors = 0
+    failed_records = []
+
+    # Import necessary modules
+    import importlib
+    import os
+    import sys
+    from .matcher import Matcher
+
+    # Add current working directory to sys.path to allow importing user modules
+    cwd = os.getcwd()
+    if cwd not in sys.path:
+        sys.path.insert(0, cwd)
+
+    matcher = Matcher(tolerance=tolerance)
+
+    current_module = None
+    for record in records:
+        # Print module header if changed
+        if record.module != current_module:
+            if current_module is not None:
+                typer.echo()
+            typer.secho(f"{record.module}:", fg=typer.colors.CYAN, bold=True)
+            current_module = record.module
+
+        # Print function being tested
+        typer.echo(f"  {record.function}() [ID: {record.record_id[:8]}]...", nl=False)
+
+        try:
+            # Import module and get function
+            try:
+                module = importlib.import_module(record.module)
+            except ImportError as e:
+                raise ImportError(
+                    f"Cannot import module '{record.module}'. "
+                    f"Make sure to run this command from the project root directory. "
+                    f"Original error: {str(e)}"
+                )
+
+            func = getattr(module, record.function)
+
+            # Get the original function if it's decorated
+            if hasattr(func, "__wrapped__"):
+                original_func = func.__wrapped__
+            else:
+                original_func = func
+
+            # Execute function with recorded arguments
+            result = original_func(*record.args, **record.kwargs)
+
+            # Compare result with recorded value
+            match_result = matcher.match(record.result, result)
+
+            if match_result:
+                typer.secho(" PASS", fg=typer.colors.GREEN)
+                passed += 1
+            else:
+                typer.secho(" FAIL", fg=typer.colors.RED)
+                failed += 1
+                failed_records.append((record, match_result.message))
+
+        except Exception as e:
+            typer.secho(" ERROR", fg=typer.colors.RED)
+            errors += 1
+            failed_records.append((record, f"Exception: {str(e)}"))
+
+    # Summary
+    typer.echo()
+    typer.secho("=" * 60, fg=typer.colors.BRIGHT_BLACK)
+    typer.echo(f"Total: {len(records)} | ", nl=False)
+    typer.secho(f"Passed: {passed}", fg=typer.colors.GREEN, nl=False)
+    typer.echo(" | ", nl=False)
+    if failed > 0:
+        typer.secho(f"Failed: {failed}", fg=typer.colors.RED, nl=False)
+        typer.echo(" | ", nl=False)
+    if errors > 0:
+        typer.secho(f"Errors: {errors}", fg=typer.colors.RED)
+    else:
+        typer.echo()
+
+    # Show failed records details
+    if failed_records:
+        typer.echo()
+        typer.secho("Failed Records:", fg=typer.colors.RED, bold=True)
+        for record, error_msg in failed_records:
+            typer.echo()
+            typer.echo(f"  {record.module}.{record.function}() [ID: {record.record_id[:8]}]")
+            typer.echo(f"    {error_msg}")
+
+    # Exit with error code if any tests failed
+    if failed + errors > 0:
+        raise typer.Exit(code=1)
+
+
+@app.command()
 def serve(
     ctx: typer.Context,
     host: Annotated[str, typer.Option(help="Host to bind to")] = "localhost",

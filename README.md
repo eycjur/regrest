@@ -9,17 +9,16 @@
 [![Static Analysis](https://github.com/eycjur/regrest/actions/workflows/static_analysis.yml/badge.svg)](https://github.com/eycjur/regrest/actions/workflows/static_analysis.yml)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/eycjur/regrest)
 
-**Regrest** is a simple and powerful regression testing tool for Python. It automatically records function outputs on the first run and validates them on subsequent runs.
+**Regrest** is an automated regression testing and debugging tool for Python. It automatically records function outputs on the first run and validates them on subsequent runs, while providing powerful visualization capabilities for understanding complex data flows.
 
 ## Features
 
-- 🎯 **Simple decorator-based API** - Just add `@regrest` to your functions
-- 📝 **Automatic recording** - First run records outputs, subsequent runs validate
-- 🔍 **Smart comparison** - Handles floats, dicts, lists, nested structures, and custom classes
-- 🛠 **CLI tools** - List, view, delete, and visualize test records
-- 📊 **Web visualization** - Beautiful dashboard with JSONesque display, hierarchical navigation, and hot reload
-- ⚙️ **Configurable** - Custom tolerance, storage location, and more
-- 🔧 **Auto .gitignore** - Automatically creates `.regrest/.gitignore` to exclude test records on first run
+- 🎯 **Zero-effort regression testing** - Catch unintended changes without writing test code
+- 📝 **Automatic test generation** - Just add `@regrest` decorator, tests are created automatically
+- 🔬 **Visual debugging** - Understand complex data flows by visualizing function inputs and outputs
+- 📊 **Beautiful web dashboard** - Explore recorded data with syntax highlighting and hierarchical navigation
+- ⚡ **Faster debugging cycles** - Reproduce issues instantly with saved inputs
+- 📚 **Living documentation** - Function behavior examples generated automatically from real executions
 
 ## Requirements
 
@@ -92,6 +91,75 @@ REGREST_UPDATE_MODE=1 python your_script.py
 
 **Priority**: Constructor arguments > Environment variables > Default values
 
+## Use Cases
+
+### 1. Regression Testing (Primary)
+
+Automatically catch unintended changes in function behavior:
+
+```python
+@regrest
+def calculate_discount(price, customer_type):
+    # Business logic that should not change
+    return price * get_discount_rate(customer_type)
+
+# First run: records the result
+calculate_discount(100, "premium")  # Records: 85.0
+
+# Later: if logic changes accidentally, test fails
+calculate_discount(100, "premium")  # Fails if result != 85.0
+```
+
+### 2. Debugging & Visualization
+
+Understand complex data flows by visualizing inputs and outputs:
+
+```python
+@regrest
+def process_pipeline(data):
+    """Complex data transformation."""
+    return transform(filter(validate(data)))
+
+# Run once to record
+process_pipeline(raw_data)
+
+# Visualize in CLI
+$ regrest list -k process_pipeline
+# Shows: args, kwargs, and results in readable format
+
+# Or browse in web UI
+$ regrest serve
+# Navigate to http://localhost:8000
+# See formatted inputs/outputs with syntax highlighting
+```
+
+**Benefits for debugging**:
+- 📸 **Snapshot complex objects** - See exact state of nested data structures
+- 🔄 **Track changes over time** - Compare how outputs evolve as code changes
+- 👁️ **Visual inspection** - Web UI with JSONesque display for easy reading
+- 🐛 **Reproduce issues** - Saved inputs allow easy bug reproduction
+
+### 3. Documentation by Example
+
+Generate live examples of function behavior:
+
+```python
+@regrest
+def api_response_formatter(user_data):
+    """Format user data for API response."""
+    return {
+        "id": user_data["id"],
+        "name": f"{user_data['first']} {user_data['last']}",
+        "email": user_data["email"].lower(),
+    }
+
+# Run with example inputs
+api_response_formatter({"id": 1, "first": "John", "last": "Doe", "email": "JOHN@EXAMPLE.COM"})
+
+# Now `regrest list` shows real input/output examples
+# Perfect for API documentation or onboarding
+```
+
 ## CLI Commands
 
 ### List Records
@@ -110,6 +178,21 @@ regrest delete abc123def456      # Delete by ID
 regrest delete --pattern "test_*" # Delete by pattern
 regrest delete --all             # Delete all records
 ```
+
+### Verify Records
+
+```bash
+regrest verify                      # Verify all records
+regrest verify -k calculate         # Verify only 'calculate' functions
+regrest verify --tolerance 0.001    # Custom float tolerance
+```
+
+Re-executes all recorded functions with their saved arguments and validates that the outputs match the recorded results. This is useful for:
+- Running regression tests in CI/CD pipelines
+- Validating that refactoring didn't break existing functionality
+- Checking compatibility after dependency updates
+
+**Note**: Only works with functions defined at module level (not inside test functions or closures).
 
 ### Serve Web UI
 
@@ -141,37 +224,35 @@ graph TB
         C[Storage<br/>storage.py]
         D[Matcher<br/>matcher.py]
         E[Config<br/>config.py]
-        F[Exceptions<br/>exceptions.py]
     end
 
     subgraph "Storage Layer"
-        G[JSON Files<br/>.regrest/*.json]
-        H[Pickle Serialization<br/>base64 encoded]
+        F[JSON Files<br/>.regrest/*.json]
+        G[Pickle Serialization<br/>base64 encoded]
     end
 
     subgraph "CLI & Server"
-        I[CLI<br/>typer-based]
-        J[Web Server<br/>Flask/HTTP]
-        K[Web UI<br/>Tailwind CSS]
+        H[CLI<br/>typer-based]
+        I[Web Server<br/>Flask/HTTP]
+        J[Web UI<br/>Tailwind CSS]
     end
 
     A --> B
     B --> C
     B --> D
     B --> E
-    B --> F
+    C --> F
     C --> G
-    C --> H
+    H --> C
     I --> C
-    J --> C
-    J --> K
+    I --> J
 
     style A fill:#e1f5ff
     style B fill:#fff4e1
     style C fill:#f0e1ff
     style D fill:#e1ffe1
+    style H fill:#ffe1e1
     style I fill:#ffe1e1
-    style J fill:#ffe1e1
 ```
 
 ## How It Works
@@ -257,24 +338,7 @@ Regrest uses a **hybrid encoding** approach for maximum compatibility and readab
 
 **Considerations**:
 - ⚠️ **Pickle compatibility**: May have issues across different Python versions
-- ⚠️ **Custom classes**: Must be pickle-serializable and implement `__eq__` for comparison
-
-## Best Practices
-
-| Practice | Description |
-|----------|-------------|
-| **Deterministic functions** | Use `@regrest` only on functions with consistent outputs (same input → same output) |
-| **Auto .gitignore** | Test records are automatically excluded from git via `.regrest/.gitignore` |
-| **Update workflow** | When intentionally changing behavior, update records: `REGREST_UPDATE_MODE=1 python script.py` |
-
-## Limitations
-
-| Limitation | Description |
-|------------|-------------|
-| **Python version** | Requires Python 3.9+ |
-| **Non-deterministic functions** | Don't use on functions with random outputs, timestamps, or external API calls |
-| **Serialization** | Data must be JSON or pickle-serializable; custom classes need `__eq__` for comparison |
-| **Pickle compatibility** | May have issues across different Python versions |
+- ⚠️ **Custom classes**: Must be pickle-serializable (comparison is automatic via `__dict__`)
 
 ## Contributing
 

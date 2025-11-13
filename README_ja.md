@@ -9,17 +9,16 @@
 [![Static Analysis](https://github.com/eycjur/regrest/actions/workflows/static_analysis.yml/badge.svg)](https://github.com/eycjur/regrest/actions/workflows/static_analysis.yml)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/eycjur/regrest)
 
-**Regrest** は、Pythonのためのシンプルで強力な回帰テストツールです。初回実行時に関数の出力を自動的に記録し、その後の実行で検証します。
+**Regrest** は、Pythonのための自動回帰テスト & デバッグ支援ツールです。初回実行時に関数の出力を自動的に記録し、その後の実行で検証しながら、複雑なデータフローを理解するための強力な可視化機能を提供します。
 
 ## 特徴
 
-- 🎯 **シンプルなデコレーターAPI** - 関数に `@regrest` を追加するだけ
-- 📝 **自動記録** - 初回実行で出力を記録、その後の実行で検証
-- 🔍 **スマートな比較** - float、dict、list、ネストした構造、カスタムクラスを適切に処理
-- 🛠 **CLIツール** - テスト記録の一覧表示、確認、削除、可視化が可能
-- 📊 **Web可視化** - JSONesque表示、階層的ナビゲーション、ホットリロード機能を備えた美しいダッシュボード
-- ⚙️ **カスタマイズ可能** - 許容誤差、保存場所などを設定可能
-- 🔧 **自動.gitignore** - 初回実行時に `.regrest/.gitignore` を自動作成してテスト記録を除外
+- 🎯 **ゼロコストで回帰テスト** - テストコードを書かずに意図しない変更を検出
+- 📝 **テストの自動生成** - `@regrest`デコレーターを追加するだけで、テストが自動作成
+- 🔬 **ビジュアルデバッグ** - 関数の入出力を可視化し、複雑なデータフローを理解
+- 📊 **美しいWebダッシュボード** - シンタックスハイライトと階層的ナビゲーションで記録を探索
+- ⚡ **デバッグサイクルの高速化** - 保存された入力で問題を即座に再現
+- 📚 **生きたドキュメント** - 実際の実行から関数の振る舞い例を自動生成
 
 ## 要件
 
@@ -92,6 +91,75 @@ REGREST_UPDATE_MODE=1 python your_script.py
 
 **優先順位**: コンストラクタ引数 > 環境変数 > デフォルト値
 
+## ユースケース
+
+### 1. 回帰テスト（主な用途）
+
+関数の振る舞いが意図せず変更されることを自動的に検出：
+
+```python
+@regrest
+def calculate_discount(price, customer_type):
+    # 変更されるべきでないビジネスロジック
+    return price * get_discount_rate(customer_type)
+
+# 初回実行：結果を記録
+calculate_discount(100, "premium")  # 記録: 85.0
+
+# その後：ロジックが誤って変更されるとテスト失敗
+calculate_discount(100, "premium")  # 結果が85.0でない場合は失敗
+```
+
+### 2. デバッグと可視化
+
+入出力を可視化することで複雑なデータフローを理解：
+
+```python
+@regrest
+def process_pipeline(data):
+    """複雑なデータ変換。"""
+    return transform(filter(validate(data)))
+
+# 一度実行して記録
+process_pipeline(raw_data)
+
+# CLIで可視化
+$ regrest list -k process_pipeline
+# 表示: args、kwargs、結果を読みやすい形式で
+
+# またはWeb UIで閲覧
+$ regrest serve
+# http://localhost:8000 にアクセス
+# シンタックスハイライト付きで入出力を確認
+```
+
+**デバッグのメリット**：
+- 📸 **複雑なオブジェクトのスナップショット** - ネストしたデータ構造の正確な状態を確認
+- 🔄 **時系列での変更追跡** - コード変更に伴う出力の変化を比較
+- 👁️ **視覚的な検査** - JSONesque表示のWeb UIで簡単に読める
+- 🐛 **問題の再現** - 保存された入力で簡単にバグを再現
+
+### 3. 実例によるドキュメント
+
+関数の振る舞いの実例を生成：
+
+```python
+@regrest
+def api_response_formatter(user_data):
+    """API レスポンス用にユーザーデータをフォーマット。"""
+    return {
+        "id": user_data["id"],
+        "name": f"{user_data['first']} {user_data['last']}",
+        "email": user_data["email"].lower(),
+    }
+
+# サンプル入力で実行
+api_response_formatter({"id": 1, "first": "太郎", "last": "山田", "email": "TARO@EXAMPLE.COM"})
+
+# `regrest list` で実際の入出力例を表示
+# APIドキュメントやオンボーディングに最適
+```
+
 ## CLIコマンド
 
 ### 記録の一覧表示
@@ -110,6 +178,21 @@ regrest delete abc123def456      # IDで削除
 regrest delete --pattern "test_*" # パターンで削除
 regrest delete --all             # すべての記録を削除
 ```
+
+### 記録の検証
+
+```bash
+regrest verify                      # すべての記録を検証
+regrest verify -k calculate         # 'calculate'関数のみ検証
+regrest verify --tolerance 0.001    # カスタム浮動小数点許容誤差
+```
+
+記録されたすべての関数を保存された引数で再実行し、出力が記録された結果と一致することを検証します。以下のような用途に便利です：
+- CI/CDパイプラインでの回帰テストの実行
+- リファクタリングが既存機能を破壊していないことの確認
+- 依存関係の更新後の互換性チェック
+
+**注意**: モジュールレベルで定義された関数でのみ動作します（テスト関数やクロージャ内の関数には対応していません）。
 
 ### Web UIの起動
 
@@ -137,30 +220,28 @@ graph TB
     C["Storage<br/>storage.py"]
     D["Matcher<br/>matcher.py"]
     E["Config<br/>config.py"]
-    F["Exceptions<br/>exceptions.py"]
-    G["JSON Files<br/>.regrest/*.json"]
-    H["Pickle<br/>base64エンコード"]
-    I["CLI<br/>typerベース"]
-    J["Web Server<br/>Flask/HTTP"]
-    K["Web UI<br/>Tailwind CSS"]
+    F["JSON Files<br/>.regrest/*.json"]
+    G["Pickle<br/>base64エンコード"]
+    H["CLI<br/>typerベース"]
+    I["Web Server<br/>Flask/HTTP"]
+    J["Web UI<br/>Tailwind CSS"]
 
     A --> B
     B --> C
     B --> D
     B --> E
-    B --> F
+    C --> F
     C --> G
-    C --> H
+    H --> C
     I --> C
-    J --> C
-    J --> K
+    I --> J
 
     style A fill:#e1f5ff
     style B fill:#fff4e1
     style C fill:#f0e1ff
     style D fill:#e1ffe1
+    style H fill:#ffe1e1
     style I fill:#ffe1e1
-    style J fill:#ffe1e1
 ```
 
 ## 仕組み
@@ -246,24 +327,7 @@ Regrestは**ハイブリッドエンコーディング**方式を採用し、互
 
 **注意点**：
 - ⚠️ **Pickle互換性**: Pythonバージョン間で問題が発生する可能性あり
-- ⚠️ **カスタムクラス**: Pickleでシリアライズ可能であり、比較のために `__eq__` を実装する必要あり
-
-## ベストプラクティス
-
-| プラクティス | 説明 |
-|------------|------|
-| **決定的な関数** | `@regrest` は同じ入力で同じ出力を返す関数でのみ使用する |
-| **自動 .gitignore** | テスト記録は `.regrest/.gitignore` により自動的にgitから除外される |
-| **更新ワークフロー** | 意図的に動作を変更した場合は記録を更新: `REGREST_UPDATE_MODE=1 python script.py` |
-
-## 制限事項
-
-| 制限事項 | 説明 |
-|---------|------|
-| **Pythonバージョン** | Python 3.9以上が必要 |
-| **非決定的な関数** | ランダム値、タイムスタンプ、外部API呼び出しを含む関数には使用しない |
-| **シリアライゼーション** | データはJSONまたはPickleでシリアライズ可能である必要があり、カスタムクラスは `__eq__` が必須 |
-| **Pickle互換性** | Pythonバージョン間で互換性の問題が発生する可能性がある |
+- ⚠️ **カスタムクラス**: Pickleでシリアライズ可能である必要あり（比較は `__dict__` で自動的に行われる）
 
 ## コントリビューション
 
