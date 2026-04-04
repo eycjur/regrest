@@ -29,7 +29,7 @@ test:  ## Run tests with pytest
 	uv run python -m pytest tests
 
 .PHONY: check
-check: format lint test  ## Run all checks (format, lint, test)
+check: format lint-fix test  ## Run all checks (format, lint, test)
 
 .PHONY: build
 build: clean  ## Build distribution packages

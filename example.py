@@ -11,13 +11,14 @@ Environment variables:
 """
 
 from dataclasses import dataclass
+from typing import Union
 
 from regrest import regrest
 
 
 # Example 1: Basic usage with dict
 @regrest
-def process_data(data):
+def process_data(data: list[int]) -> dict[str, Union[int, float]]:
     """Process data and return statistics."""
     return {
         "mean": sum(data) / len(data),
@@ -29,7 +30,7 @@ def process_data(data):
 
 # Example 2: Custom tolerance for floating-point
 @regrest(tolerance=1e-10)
-def calculate_pi():
+def calculate_pi() -> float:
     """Calculate pi approximation with high precision."""
     pi = 0
     for i in range(1000000):
@@ -57,7 +58,7 @@ class Company:
 
 
 @regrest
-def create_company_structure():
+def create_company_structure() -> Company:
     """Create a nested company structure.
 
     Demonstrates regrest's ability to handle custom classes with Pickle.
@@ -77,7 +78,7 @@ def create_company_structure():
     return company
 
 
-def main():
+def main() -> None:
     """Run examples."""
     print("=== Regrest Examples ===\n")
 

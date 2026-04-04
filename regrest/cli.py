@@ -238,6 +238,7 @@ def verify(
     import importlib
     import os
     import sys
+
     from .matcher import Matcher
 
     # Add current working directory to sys.path to allow importing user modules
@@ -268,7 +269,7 @@ def verify(
                     f"Cannot import module '{record.module}'. "
                     f"Make sure to run this command from the project root directory. "
                     f"Original error: {str(e)}"
-                )
+                ) from e
 
             func = getattr(module, record.function)
 
@@ -317,7 +318,9 @@ def verify(
         typer.secho("Failed Records:", fg=typer.colors.RED, bold=True)
         for record, error_msg in failed_records:
             typer.echo()
-            typer.echo(f"  {record.module}.{record.function}() [ID: {record.record_id[:8]}]")
+            typer.echo(
+                f"  {record.module}.{record.function}() [ID: {record.record_id[:8]}]"
+            )
             typer.echo(f"    {error_msg}")
 
     # Exit with error code if any tests failed

@@ -2,13 +2,14 @@
 
 import shutil
 import time
+from collections.abc import Generator
 from pathlib import Path
 
 import pytest
 
 
 @pytest.fixture(scope="module", autouse=True)
-def clean_regrest_dir():
+def clean_regrest_dir() -> Generator[None, None, None]:
     """Clean up .regrest directory before and after tests."""
     regrest_dir = Path(".regrest")
     if regrest_dir.exists():
@@ -19,12 +20,12 @@ def clean_regrest_dir():
     #     shutil.rmtree(regrest_dir)
 
 
-def test_gitignore_auto_creation():
+def test_gitignore_auto_creation() -> None:
     """Test that .regrest/.gitignore is created automatically on first run."""
     from regrest import regrest
 
     @regrest
-    def simple_function():
+    def simple_function() -> int:
         return 42
 
     result = simple_function()
@@ -39,7 +40,7 @@ def test_gitignore_auto_creation():
     assert "*" in content, ".regrest/.gitignore should contain '*' to ignore all files"
 
 
-def test_gitignore_not_overwritten():
+def test_gitignore_not_overwritten() -> None:
     """Test that .regrest/.gitignore is not overwritten on subsequent runs."""
     from regrest import regrest
 
@@ -52,7 +53,7 @@ def test_gitignore_not_overwritten():
     time.sleep(0.1)
 
     @regrest
-    def another_function():
+    def another_function() -> str:
         return "hello"
 
     result = another_function()
